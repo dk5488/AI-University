@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from app.domain.learning import Assessment, LearningContext, Progress, RevisionTask
+from app.domain.learning import Assessment, LearningContext, Progress, RevisionTask, Topic
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +56,9 @@ class StructuredMemoryStore(Protocol):
         ...
 
     async def create_revision_tasks(self, tasks: tuple[RevisionTask, ...]) -> tuple[RevisionTask, ...]:
+        ...
+
+    async def get_topic_by_slug(self, subject_code: str, topic_slug: str) -> Topic | None:
         ...
 
 
@@ -167,3 +170,6 @@ class MemoryService:
 
     async def clear_session(self, user_id: UUID, session_id: str) -> None:
         await self._session.clear_session(user_id, session_id)
+
+    async def get_topic_by_slug(self, subject_code: str, topic_slug: str) -> Topic | None:
+        return await self._structured.get_topic_by_slug(subject_code, topic_slug)

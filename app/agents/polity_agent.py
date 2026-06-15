@@ -6,9 +6,23 @@ from uuid import UUID
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, Field
 
 from app.memory.contracts import MemoryService, SemanticObservation
 from app.rag.retrieval import RetrievalService
+
+
+class MCQSchema(BaseModel):
+    """Schema for a single multiple-choice question."""
+    stem: str = Field(description="The question text.")
+    options: list[str] = Field(description="Exactly 4 options.")
+    correct_option: str = Field(description="The correct option from the list.")
+    explanation: str = Field(description="Explanation of why the option is correct, citing source material.")
+
+
+class QuizSchema(BaseModel):
+    """Schema for a collection of multiple-choice questions."""
+    questions: list[MCQSchema] = Field(description="List of MCQs.")
 
 
 class PolityAgent:
@@ -22,6 +36,7 @@ class PolityAgent:
         self._memory_service = memory_service
         self._retrieval_service = retrieval_service
         self._llm = ChatOpenAI(model=model, api_key=api_key)
+        self._quiz_llm = self._llm.with_structured_output(QuizSchema)
 
     async def teach(
         self,
@@ -29,6 +44,7 @@ class PolityAgent:
         topic: str,
         message: str | None = None,
     ) -> dict[str, Any]:
+        # ... (unchanged)
         # 1. Get learning context
         topic_slug = topic.lower().replace(" ", "-")
         context = await self._memory_service.get_learning_context(
@@ -81,7 +97,78 @@ class PolityAgent:
             "subject": "Polity",
         }
 
+    async def generate_mcqs(
+        self,
+        user_id: UUID,
+        topic: str,
+        count: int = 5,
+    ) -> QuizSchema:
+        # ... (unchanged)
+        # 1. Get context
+        topic_slug = topic.lower().replace(" ", "-")
+        context = await self._memory_service.get_learning_context(
+            user_id=user_id,
+            subject_code="polity",
+            topic_slug=topic_slug,
+        )
+
+        # 2. Retrieve source material
+        retrieval_response = await self._retrieval_service.retrieve(
+            query=f"MCQs on {topic}",
+            subject="Polity",
+            limit=5,
+        )
+
+        # 3. Build Prompt
+        system_prompt = (
+            "You are the Polity Examiner at AI University. Your goal is to generate high-quality "
+            "multiple-choice questions for the UPSC Civil Services Examination.\n\n"
+            f"TOPIC: {topic}\n"
+            f"SOURCE MATERIAL:\n"
+            + "\n\n".join([c.content for c in retrieval_response.chunks])
+            + "\n\nINSTRUCTIONS:\n"
+            f"1. Generate {count} MCQs.\n"
+            "2. Questions must be analytical and ground in the source material.\n"
+            "3. Provide 4 distinct options for each question.\n"
+            "4. Provide a clear explanation citing the source material for the correct answer."
+        )
+
+        # 4. Generate
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=f"Generate {count} MCQs on {topic}."),
+        ]
+        
+        return await self._quiz_llm.ainvoke(messages)
+
+    async def evaluate_mcq_submission(
+        self,
+        user_id: UUID,
+        topic: str,
+        score: int,
+        total: int,
+        weak_topics: list[str],
+    ) -> str:
+        """Generate personalized feedback for an MCQ attempt."""
+        system_prompt = (
+            "You are the Polity Mentor at AI University. Provide concise, encouraging, "
+            "and analytical feedback on a student's MCQ performance.\n\n"
+            f"STUDENT PERFORMANCE:\n"
+            f"- Topic: {topic}\n"
+            f"- Score: {score}/{total}\n"
+            f"- Identified Weak Areas: {', '.join(weak_topics) if weak_topics else 'None'}"
+        )
+        
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content="Provide personalized feedback and next steps."),
+        ]
+        
+        response = await self._llm.ainvoke(messages)
+        return response.content
+
     def _build_teaching_system_prompt(self, context: Any, chunks: list[Any]) -> str:
+        # ... (rest of the method)
         # Context summary
         progress_info = "New topic for the user."
         if context.progress:

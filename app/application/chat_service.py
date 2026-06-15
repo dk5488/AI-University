@@ -6,6 +6,7 @@ from uuid import UUID
 from app.agents.contracts import Intent, Subject
 from app.agents.master_agent import MasterAgent
 from app.agents.polity_agent import PolityAgent
+from app.application.quiz_service import QuizService
 
 
 class ChatService:
@@ -13,9 +14,11 @@ class ChatService:
         self,
         master_agent: MasterAgent,
         polity_agent: PolityAgent,
+        quiz_service: QuizService | None = None,
     ) -> None:
         self._master_agent = master_agent
         self._polity_agent = polity_agent
+        self._quiz_service = quiz_service
 
     async def chat(
         self,
@@ -32,15 +35,25 @@ class ChatService:
 
         # 2. Execute based on subject and intent
         if command.subject == Subject.POLITY:
+            topic = command.topic or "Polity"
+            
             if command.intent == Intent.TEACH:
-                topic = command.topic or "Polity"
                 return await self._polity_agent.teach(
                     user_id=user_id,
                     topic=topic,
                     message=message,
                 )
             
-            # Future: Handle other intents like GENERATE_MCQ
+            if command.intent == Intent.GENERATE_MCQ:
+                return {
+                    "answer": f"I can definitely help you test your knowledge on {topic}. Would you like me to generate a 5-question quiz for you?",
+                    "subject": "Polity",
+                    "topic": topic,
+                    "sources": [],
+                    "next_actions": [f"Generate MCQs on {topic}"],
+                }
+            
+            # Future: Handle other intents
         
         # 3. Fallback for unknown or unsupported subjects
         return {
