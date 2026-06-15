@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from app.domain.learning import Assessment, Progress, RevisionTask, Subject, Topic
+from app.domain.learning import Assessment, Progress, RevisionTask, Subject, Topic, RevisionStatus
 from app.memory.contracts import MemoryService, ProgressUpdate, SemanticObservation
 
 
@@ -75,6 +75,16 @@ class InMemoryStructuredMemoryStore:
         for task in tasks:
             self._revision_tasks[task.id] = task
         return tasks
+
+    async def list_due_revisions(self, user_id: UUID) -> tuple[RevisionTask, ...]:
+        now = datetime.now(timezone.utc)
+        return tuple(
+            task
+            for task in self._revision_tasks.values()
+            if task.user_id == user_id
+            and task.status == RevisionStatus.PENDING
+            and task.due_at <= now
+        )
 
     async def get_topic_by_slug(self, subject_code: str, topic_slug: str) -> Topic | None:
         return self._topics.get((subject_code, topic_slug))
