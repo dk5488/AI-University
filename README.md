@@ -44,6 +44,14 @@ Health check:
 GET /api/v1/health
 ```
 
+Session lifecycle:
+
+```text
+POST /api/v1/users/{user_id}/sessions
+GET /api/v1/users/{user_id}/sessions/{session_id}
+DELETE /api/v1/users/{user_id}/sessions/{session_id}
+```
+
 ## Development
 
 Run tests:
