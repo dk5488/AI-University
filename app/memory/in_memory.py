@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from app.domain.learning import Assessment, Progress, RevisionTask
+from app.domain.learning import Assessment, Progress, RevisionTask, Subject, Topic
 from app.memory.contracts import MemoryService, ProgressUpdate, SemanticObservation
 
 
@@ -14,6 +14,18 @@ class InMemoryStructuredMemoryStore:
         self._progress: dict[tuple[UUID, UUID], Progress] = {}
         self._assessments: dict[UUID, list[Assessment]] = defaultdict(list)
         self._revision_tasks: dict[UUID, RevisionTask] = {}
+        self._topics: dict[tuple[str, str], Topic] = {}
+        self._seed_data()
+
+    def _seed_data(self) -> None:
+        polity = Subject(code="polity", name="Indian Polity")
+        topics = [
+            Topic(subject_id=polity.id, name="Fundamental Rights", slug="fundamental-rights"),
+            Topic(subject_id=polity.id, name="DPSP", slug="dpsp"),
+            Topic(subject_id=polity.id, name="President", slug="president"),
+        ]
+        for topic in topics:
+            self._topics[("polity", topic.slug)] = topic
 
     async def get_progress(self, user_id: UUID, topic_id: UUID) -> Progress | None:
         return self._progress.get((user_id, topic_id))
@@ -63,6 +75,9 @@ class InMemoryStructuredMemoryStore:
         for task in tasks:
             self._revision_tasks[task.id] = task
         return tasks
+
+    async def get_topic_by_slug(self, subject_code: str, topic_slug: str) -> Topic | None:
+        return self._topics.get((subject_code, topic_slug))
 
 
 class InMemorySemanticMemoryStore:
