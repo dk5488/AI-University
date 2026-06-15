@@ -61,3 +61,41 @@ class QdrantVectorStore:
             collection_name=self._collection_name,
             points=points,
         )
+
+    async def search(
+        self,
+        query_vector: list[float],
+        limit: int = 5,
+        subject: str | None = None,
+        document_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        query_filter = None
+        must_filters = []
+        
+        if subject:
+            must_filters.append(
+                models.FieldCondition(
+                    key="subject",
+                    match=models.MatchValue(value=subject),
+                )
+            )
+        if document_id:
+            must_filters.append(
+                models.FieldCondition(
+                    key="document_id",
+                    match=models.MatchValue(value=document_id),
+                )
+            )
+            
+        if must_filters:
+            query_filter = models.Filter(must=must_filters)
+
+        results = await self._client.search(
+            collection_name=self._collection_name,
+            query_vector=query_vector,
+            query_filter=query_filter,
+            limit=limit,
+            with_payload=True,
+        )
+        
+        return [hit.payload for hit in results if hit.payload is not None]
