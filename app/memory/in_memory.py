@@ -86,8 +86,22 @@ class InMemoryStructuredMemoryStore:
             and task.due_at <= now
         )
 
+    async def list_progress(self, user_id: UUID) -> tuple[Progress, ...]:
+        return tuple(
+            progress
+            for progress in self._progress.values()
+            if progress.user_id == user_id
+        )
+
     async def get_topic_by_slug(self, subject_code: str, topic_slug: str) -> Topic | None:
         return self._topics.get((subject_code, topic_slug))
+
+    async def list_topics(self, subject_code: str) -> tuple[Topic, ...]:
+        return tuple(
+            topic
+            for (code, _), topic in self._topics.items()
+            if code == subject_code
+        )
 
 
 class InMemorySemanticMemoryStore:
