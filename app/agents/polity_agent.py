@@ -1,5 +1,5 @@
-from __future__ import annotations
-
+import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 
 from app.memory.contracts import MemoryService, SemanticObservation
 from app.rag.retrieval import RetrievalService
+
+logger = logging.getLogger(__name__)
 
 
 class MCQSchema(BaseModel):
@@ -35,7 +37,12 @@ class PolityAgent:
     ) -> None:
         self._memory_service = memory_service
         self._retrieval_service = retrieval_service
-        self._llm = ChatOpenAI(model=model, api_key=api_key)
+        self._llm = ChatOpenAI(
+            model=model, 
+            api_key=api_key,
+            max_retries=3,
+            timeout=30,
+        )
         self._quiz_llm = self._llm.with_structured_output(QuizSchema)
 
     async def teach(
@@ -44,7 +51,9 @@ class PolityAgent:
         topic: str,
         message: str | None = None,
     ) -> dict[str, Any]:
-        # ... (unchanged)
+        logger.info(f"Teaching topic '{topic}' to user {user_id}")
+        start_time = time.perf_counter()
+        
         # 1. Get learning context
         topic_slug = topic.lower().replace(" ", "-")
         context = await self._memory_service.get_learning_context(
@@ -70,7 +79,13 @@ class PolityAgent:
             HumanMessage(content=user_message),
         ]
         
-        response = await self._llm.ainvoke(messages)
+        try:
+            response = await self._llm.ainvoke(messages)
+            latency = time.perf_counter() - start_time
+            logger.info(f"LLM teaching response received in {latency:.2f}s for topic '{topic}'")
+        except Exception as e:
+            logger.error(f"LLM teaching call failed for topic '{topic}': {e}")
+            raise
 
         # 5. Record Learning Event
         await self._memory_service.add_semantic_observation(
@@ -103,7 +118,9 @@ class PolityAgent:
         topic: str,
         count: int = 5,
     ) -> QuizSchema:
-        # ... (unchanged)
+        logger.info(f"Generating {count} MCQs for topic '{topic}' and user {user_id}")
+        start_time = time.perf_counter()
+        
         # 1. Get context
         topic_slug = topic.lower().replace(" ", "-")
         context = await self._memory_service.get_learning_context(
@@ -139,7 +156,14 @@ class PolityAgent:
             HumanMessage(content=f"Generate {count} MCQs on {topic}."),
         ]
         
-        return await self._quiz_llm.ainvoke(messages)
+        try:
+            result = await self._quiz_llm.ainvoke(messages)
+            latency = time.perf_counter() - start_time
+            logger.info(f"LLM MCQ generation response received in {latency:.2f}s for topic '{topic}'")
+            return result
+        except Exception as e:
+            logger.error(f"LLM MCQ generation call failed for topic '{topic}': {e}")
+            raise
 
     async def evaluate_mcq_submission(
         self,
@@ -150,6 +174,9 @@ class PolityAgent:
         weak_topics: list[str],
     ) -> str:
         """Generate personalized feedback for an MCQ attempt."""
+        logger.info(f"Evaluating MCQ submission for topic '{topic}', user {user_id}, score {score}/{total}")
+        start_time = time.perf_counter()
+        
         system_prompt = (
             "You are the Polity Mentor at AI University. Provide concise, encouraging, "
             "and analytical feedback on a student's MCQ performance.\n\n"
@@ -164,8 +191,14 @@ class PolityAgent:
             HumanMessage(content="Provide personalized feedback and next steps."),
         ]
         
-        response = await self._llm.ainvoke(messages)
-        return response.content
+        try:
+            response = await self._llm.ainvoke(messages)
+            latency = time.perf_counter() - start_time
+            logger.info(f"LLM evaluation response received in {latency:.2f}s for topic '{topic}'")
+            return response.content
+        except Exception as e:
+            logger.warning(f"LLM evaluation call failed for topic '{topic}': {e}. Using fallback feedback.")
+            return "Good attempt. Review your weak areas and keep practicing."
 
     def _build_teaching_system_prompt(self, context: Any, chunks: list[Any]) -> str:
         # ... (rest of the method)
