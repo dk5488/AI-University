@@ -6,6 +6,7 @@ from app.agents.polity_agent import PolityAgent
 from app.application.chat_service import ChatService
 from app.application.quiz_service import QuizService
 from app.application.revision_service import RevisionService
+from app.application.learning_service import LearningService
 from app.memory.contracts import MemoryService
 from app.rag.retrieval import RetrievalService
 
@@ -38,6 +39,12 @@ def get_revision_service(
     memory_service: MemoryService = Depends(get_memory_service),
 ) -> RevisionService:
     return RevisionService(memory_service)
+
+
+def get_learning_service(
+    memory_service: MemoryService = Depends(get_memory_service),
+) -> LearningService:
+    return LearningService(memory_service)
 
 
 def get_chat_service(

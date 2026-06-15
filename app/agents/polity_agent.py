@@ -110,6 +110,10 @@ class PolityAgent:
             ],
             "topic": topic,
             "subject": "Polity",
+            "next_actions": [
+                f"Generate MCQs on {topic}",
+                f"Explain {topic} in more detail",
+            ],
         }
 
     async def generate_mcqs(

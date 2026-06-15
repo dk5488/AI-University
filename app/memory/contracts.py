@@ -61,7 +61,13 @@ class StructuredMemoryStore(Protocol):
     async def list_due_revisions(self, user_id: UUID) -> tuple[RevisionTask, ...]:
         ...
 
+    async def list_progress(self, user_id: UUID) -> tuple[Progress, ...]:
+        ...
+
     async def get_topic_by_slug(self, subject_code: str, topic_slug: str) -> Topic | None:
+        ...
+
+    async def list_topics(self, subject_code: str) -> tuple[Topic, ...]:
         ...
 
 
@@ -162,6 +168,9 @@ class MemoryService:
     async def list_due_revisions(self, user_id: UUID) -> tuple[RevisionTask, ...]:
         return await self._structured.list_due_revisions(user_id)
 
+    async def list_progress(self, user_id: UUID) -> tuple[Progress, ...]:
+        return await self._structured.list_progress(user_id)
+
     async def get_session(self, user_id: UUID, session_id: str) -> dict[str, object] | None:
         return await self._session.get_session(user_id, session_id)
 
@@ -179,3 +188,6 @@ class MemoryService:
 
     async def get_topic_by_slug(self, subject_code: str, topic_slug: str) -> Topic | None:
         return await self._structured.get_topic_by_slug(subject_code, topic_slug)
+
+    async def list_topics(self, subject_code: str) -> tuple[Topic, ...]:
+        return await self._structured.list_topics(subject_code)
