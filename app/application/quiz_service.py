@@ -5,6 +5,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.agents.polity_agent import PolityAgent
+from app.application.revision_service import RevisionService
 from app.domain.learning import Assessment, AssessmentType
 from app.domain.mcqs import MCQ, MCQOption, Quiz
 from app.memory.contracts import MemoryService
@@ -15,9 +16,11 @@ class QuizService:
         self,
         memory_service: MemoryService,
         polity_agent: PolityAgent,
+        revision_service: RevisionService | None = None,
     ) -> None:
         self._memory_service = memory_service
         self._polity_agent = polity_agent
+        self._revision_service = revision_service or RevisionService(memory_service)
 
     async def generate_quiz(
         self,
@@ -156,7 +159,10 @@ class QuizService:
         )
         await self._memory_service.record_assessment(assessment)
 
-        # 5. Clear session
+        # 5. Plan Revisions if needed
+        await self._revision_service.plan_revisions_for_assessment(assessment)
+
+        # 6. Clear session
         await self._memory_service.clear_session(user_id, f"quiz:{assessment_id}")
 
         return {
