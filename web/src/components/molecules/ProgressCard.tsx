@@ -14,16 +14,24 @@ const ProgressCard: React.FC<ProgressCardProps> = ({ topicName, completion, conf
     <Card className={styles.card}>
       <div className={styles.header}>
         <h4>{topicName}</h4>
-        <span className={styles.badge}>{completion}% Done</span>
+        <span className={`${styles.badge} ${completion === 100 ? styles.completed : ''}`}>
+          {completion}% Mastery
+        </span>
       </div>
       
       <div className={styles.metrics}>
         <div className={styles.metric}>
-          <label>Course Completion</label>
+          <div className={styles.metricHeader}>
+            <label>Syllabus Completion</label>
+            <span className={styles.metricValue}>{completion}%</span>
+          </div>
           <ProgressBar value={completion} />
         </div>
         <div className={styles.metric}>
-          <label>Confidence (LLM Assessment)</label>
+          <div className={styles.metricHeader}>
+            <label>AI Confidence Score</label>
+            <span className={styles.metricValue}>{confidence}/10</span>
+          </div>
           <ProgressBar value={confidence * 10} color="var(--color-secondary)" />
         </div>
       </div>

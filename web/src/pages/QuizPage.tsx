@@ -7,6 +7,8 @@ import Card from '../components/atoms/Card';
 import { CheckCircle, XCircle, ChevronRight, GraduationCap } from 'lucide-react';
 import styles from './QuizPage.module.css';
 
+import { QuizResponse, QuizSubmissionRequest, QuizSubmissionResponse, MCQResult } from '../types/quiz';
+
 const QuizPage: React.FC = () => {
   const { subjectCode, topicSlug } = useParams<{ subjectCode: string; topicSlug: string }>();
   const navigate = useNavigate();
@@ -14,14 +16,14 @@ const QuizPage: React.FC = () => {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isFinished, setIsFinished] = useState(false);
 
-  const { data: quizData, isLoading: isQuizLoading } = useQuery({
+  const { data: quizData, isLoading: isQuizLoading } = useQuery<QuizResponse>({
     queryKey: ['quiz', subjectCode, topicSlug],
     queryFn: () => generateQuiz(subjectCode!, topicSlug!),
     enabled: !!subjectCode && !!topicSlug,
   });
 
-  const mutation = useMutation({
-    mutationFn: (results: any) => submitQuiz(quizData!.assessment_id, results),
+  const mutation = useMutation<QuizSubmissionResponse, Error, QuizSubmissionRequest>({
+    mutationFn: (results) => submitQuiz(quizData!.assessment_id, results),
     onSuccess: () => {
       setIsFinished(true);
     },
@@ -72,7 +74,7 @@ const QuizPage: React.FC = () => {
           </div>
 
           <div className={styles.questionReview}>
-            {results.results.map((r: any, i: number) => (
+            {results.results.map((r: MCQResult, i: number) => (
               <div key={i} className={styles.reviewItem}>
                 <div className={styles.reviewStatus}>
                   {r.is_correct ? <CheckCircle color="var(--color-success)" /> : <XCircle color="var(--color-error)" />}

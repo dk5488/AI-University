@@ -1,34 +1,58 @@
 .card h4 {
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-  margin-bottom: var(--spacing-sm);
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  margin-bottom: 0;
+  color: var(--color-primary);
 }
 
 .header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: var(--spacing-md);
+  align-items: center;
+  margin-bottom: var(--spacing-lg);
 }
 
 .badge {
   font-size: var(--font-size-xs);
   background-color: var(--color-background);
-  padding: 2px 8px;
+  padding: 4px 10px;
   border-radius: 12px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--color-primary);
+  border: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.completed {
+  background-color: #e6ffed;
+  color: var(--color-success);
+  border-color: #b7eb8f;
 }
 
 .metrics {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-md);
+  gap: var(--spacing-lg);
+}
+
+.metricHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
 }
 
 .metric label {
   display: block;
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
-  margin-bottom: 4px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.metricValue {
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  color: var(--color-primary);
 }
