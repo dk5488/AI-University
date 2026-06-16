@@ -13,6 +13,24 @@
   flex-direction: column;
   padding: var(--spacing-lg);
   flex-shrink: 0;
+  transition: transform var(--transition-speed);
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    z-index: 1000;
+    height: 100%;
+    transform: translateX(-100%);
+  }
+  
+  .sidebarOpen {
+    transform: translateX(0);
+  }
+  
+  .main {
+    width: 100% !important;
+  }
 }
 
 .logo {

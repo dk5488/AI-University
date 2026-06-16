@@ -5,10 +5,12 @@ import { sendMessage } from '../api/chat';
 import type { ChatMessage } from '../types/chat';
 import MessageBubble from '../components/molecules/MessageBubble';
 import { Send, Sparkles, BookOpen, RotateCcw } from 'lucide-react';
+import { useToast } from '../hooks/useToast';
 import styles from './ChatPage.module.css';
 
 const ChatPage: React.FC = () => {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [searchParams] = useSearchParams();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -27,6 +29,9 @@ const ChatPage: React.FC = () => {
       };
       setMessages((prev) => [...prev, assistantMessage]);
     },
+    onError: () => {
+      showToast('Failed to connect to Mentor. Checking your connection...', 'error');
+    }
   });
 
   const handleSend = React.useCallback((text: string) => {

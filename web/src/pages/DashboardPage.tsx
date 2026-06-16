@@ -7,15 +7,91 @@ import Card from '../components/atoms/Card';
 import { AlertCircle, ArrowRight, BookOpen, GraduationCap, Clock } from 'lucide-react';
 import styles from './DashboardPage.module.css';
 
+import Skeleton from '../components/atoms/Skeleton';
+import { useToast } from '../hooks/useToast';
+
+const DashboardSkeleton: React.FC = () => (
+  <div className={styles.container}>
+    <section className={styles.section}>
+      <div className={styles.sectionHeader}>
+        <Skeleton width={250} height={32} />
+      </div>
+      <div className={styles.grid}>
+        {[1, 2, 3].map((i) => (
+          <Card key={i} className={styles.skeletonCard}>
+            <Skeleton width="60%" height={24} />
+            <div style={{ marginTop: '20px' }}>
+              <Skeleton width="100%" height={12} />
+              <div style={{ marginTop: '12px' }}>
+                <Skeleton width="100%" height={12} />
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </section>
+
+    <div className={styles.bottomRow}>
+      <section className={styles.revisions}>
+        <Skeleton width={200} height={28} />
+        <div className={styles.revisionList} style={{ marginTop: '16px' }}>
+          {[1, 2].map((i) => (
+            <div key={i} className={styles.revisionItem}>
+              <div className={styles.revisionInfo}>
+                <Skeleton width={40} height={40} circle />
+                <div>
+                  <Skeleton width={120} height={16} />
+                  <div style={{ marginTop: '8px' }}>
+                    <Skeleton width={180} height={12} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className={styles.subjects}>
+        <Skeleton width={200} height={28} />
+        <div className={styles.subjectGrid} style={{ marginTop: '16px' }}>
+          {[1, 2].map((i) => (
+            <Card key={i} className={styles.subjectCard}>
+              <Skeleton width={48} height={48} />
+              <div>
+                <Skeleton width={100} height={16} />
+                <div style={{ marginTop: '8px' }}>
+                  <Skeleton width={80} height={12} />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </section>
+    </div>
+  </div>
+);
+
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => getDashboard(),
   });
 
-  if (isLoading) return <div className={styles.loading}>Analyzing your progress...</div>;
-  if (error) return <div className={styles.error}>Error loading dashboard. Ensure backend is running.</div>;
+  React.useEffect(() => {
+    if (error) {
+      showToast('Backend connection failed. Please check your local server.', 'error');
+    }
+  }, [error, showToast]);
+
+  if (isLoading) return <DashboardSkeleton />;
+  if (error) return (
+    <div className={styles.error}>
+      <AlertCircle size={48} />
+      <p>Unable to retrieve study records. Ensure the FastAPI backend is running.</p>
+    </div>
+  );
 
   return (
     <div className={styles.container}>

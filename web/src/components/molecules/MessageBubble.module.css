@@ -3,6 +3,18 @@
   gap: var(--spacing-md);
   margin-bottom: var(--spacing-lg);
   width: 100%;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .user {
