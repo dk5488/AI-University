@@ -1,0 +1,103 @@
+.container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-background);
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+.chatWindow {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: var(--spacing-xl);
+  display: flex;
+  flex-direction: column;
+}
+
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  margin-top: auto;
+  margin-bottom: auto;
+  gap: var(--spacing-md);
+  color: var(--color-text-secondary);
+}
+
+.welcome h2 {
+  color: var(--color-primary);
+}
+
+.loading {
+  align-self: flex-start;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-style: italic;
+  margin-bottom: var(--spacing-md);
+}
+
+.actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+  margin-top: var(--spacing-sm);
+  margin-bottom: var(--spacing-lg);
+}
+
+.actionButton {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-secondary);
+  color: var(--color-primary);
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  transition: all var(--transition-speed);
+}
+
+.actionButton:hover {
+  background-color: var(--color-secondary);
+}
+
+.inputArea {
+  background-color: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  padding: var(--spacing-lg);
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+.inputArea input {
+  flex-grow: 1;
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-base);
+  outline: none;
+}
+
+.inputArea input:focus {
+  border-color: var(--color-primary);
+}
+
+.inputArea button {
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  border: none;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--border-radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity var(--transition-speed);
+}
+
+.inputArea button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
