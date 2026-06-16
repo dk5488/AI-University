@@ -1,11 +1,68 @@
 .container {
-  height: 100%;
+  height: calc(100vh - var(--header-height) - var(--spacing-2xl));
   display: flex;
   flex-direction: column;
-  background-color: var(--color-background);
+  background-color: var(--color-surface);
   border-radius: var(--border-radius-lg);
   overflow: hidden;
   border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.chatHeader {
+  padding: var(--spacing-md) var(--spacing-xl);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--color-background);
+}
+
+.mentorInfo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  background-color: var(--color-primary);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.mentorInfo h3 {
+  font-size: var(--font-size-base);
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.status {
+  font-size: var(--font-size-xs);
+  color: var(--color-success);
+  font-weight: 500;
+}
+
+.resetButton {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  padding: 6px 12px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  transition: all var(--transition-speed);
+}
+
+.resetButton:hover {
+  background-color: var(--color-background);
+  color: var(--color-primary);
 }
 
 .chatWindow {
@@ -14,6 +71,15 @@
   padding: var(--spacing-xl);
   display: flex;
   flex-direction: column;
+  background-color: #fafafa;
+}
+
+.messageList {
+  display: flex;
+  flex-direction: column;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
 }
 
 .welcome {
@@ -22,45 +88,140 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  margin-top: auto;
-  margin-bottom: auto;
+  margin: auto;
   gap: var(--spacing-md);
-  color: var(--color-text-secondary);
+  max-width: 500px;
+}
+
+.sparkleIcon {
+  color: var(--color-secondary);
+  background: var(--color-background);
+  padding: var(--spacing-lg);
+  border-radius: 50%;
 }
 
 .welcome h2 {
   color: var(--color-primary);
+  font-size: var(--font-size-2xl);
+  font-weight: 800;
 }
 
-.loading {
-  align-self: flex-start;
-  font-size: var(--font-size-sm);
+.welcome p {
   color: var(--color-text-secondary);
-  font-style: italic;
+  font-size: var(--font-size-base);
+}
+
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-lg);
+}
+
+.suggestions button {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-primary);
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: var(--font-size-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  transition: all var(--transition-speed);
+}
+
+.suggestions button:hover {
+  border-color: var(--color-secondary);
+  transform: translateY(-2px);
+}
+
+.bubble {
+  max-width: 80%;
+  padding: var(--spacing-md);
+  border-radius: var(--border-radius-lg);
   margin-bottom: var(--spacing-md);
 }
 
+.assistant {
+  align-self: flex-start;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.loadingBubble {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  background-color: var(--color-background);
+  border-style: dashed;
+}
+
+.loadingText {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.typingIndicator {
+  display: flex;
+  gap: 4px;
+}
+
+.typingIndicator span {
+  width: 6px;
+  height: 6px;
+  background-color: var(--color-secondary);
+  border-radius: 50%;
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+
+.typingIndicator span:nth-child(1) { animation-delay: -0.32s; }
+.typingIndicator span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1.0); }
+}
+
 .actions {
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto var(--spacing-lg);
+  padding: 0 var(--spacing-md);
+}
+
+.actionLabel {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: var(--spacing-sm);
+  letter-spacing: 0.05em;
+}
+
+.actionButtons {
   display: flex;
   gap: var(--spacing-sm);
   flex-wrap: wrap;
-  margin-top: var(--spacing-sm);
-  margin-bottom: var(--spacing-lg);
 }
 
 .actionButton {
-  background-color: var(--color-surface);
+  background-color: #fff9e6;
   border: 1px solid var(--color-secondary);
   color: var(--color-primary);
-  padding: 6px 12px;
-  border-radius: 16px;
+  padding: 8px 16px;
+  border-radius: var(--border-radius-sm);
   font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-weight: 600;
   transition: all var(--transition-speed);
 }
 
 .actionButton:hover {
   background-color: var(--color-secondary);
+  color: var(--color-text-inverse);
 }
 
 .inputArea {
@@ -68,36 +229,64 @@
   border-top: 1px solid var(--color-border);
   padding: var(--spacing-lg);
   display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.inputWrapper {
+  display: flex;
   gap: var(--spacing-md);
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
 }
 
 .inputArea input {
   flex-grow: 1;
-  padding: var(--spacing-md);
+  padding: var(--spacing-lg);
   border: 1px solid var(--color-border);
   border-radius: var(--border-radius-md);
   font-size: var(--font-size-base);
   outline: none;
+  background-color: var(--color-background);
+  transition: border-color var(--transition-speed);
 }
 
 .inputArea input:focus {
   border-color: var(--color-primary);
+  background-color: var(--color-surface);
 }
 
 .inputArea button {
   background-color: var(--color-primary);
   color: var(--color-text-inverse);
   border: none;
-  width: 48px;
-  height: 48px;
+  padding: 0 24px;
   border-radius: var(--border-radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: opacity var(--transition-speed);
+  transition: all var(--transition-speed);
+}
+
+.inputArea button:hover:not(:disabled) {
+  background-color: var(--color-accent);
+  transform: scale(1.02);
 }
 
 .inputArea button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.disclaimer {
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  text-align: center;
+  margin-top: 4px;
+}
+
+@media (max-width: 768px) {
+  .bubble { max-width: 95%; }
+  .actionButton { font-size: 12px; }
 }
