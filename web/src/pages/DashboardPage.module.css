@@ -2,6 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-2xl);
+  padding-bottom: var(--spacing-2xl);
 }
 
 .title {
@@ -9,17 +10,40 @@
   font-weight: 700;
   color: var(--color-primary);
   margin-bottom: var(--spacing-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  border-bottom: 2px solid var(--color-border);
+  padding-bottom: var(--spacing-sm);
+}
+
+.titleIcon {
+  color: var(--color-secondary);
 }
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: var(--spacing-xl);
+}
+
+.clickableProgress {
+  cursor: pointer;
+  transition: transform var(--transition-speed), box-shadow var(--transition-speed);
+}
+
+.clickableProgress:hover {
+  transform: translateY(-4px);
+}
+
+.clickableProgress:hover :global(.card) {
+  border-color: var(--color-secondary);
+  box-shadow: var(--shadow-md);
 }
 
 .bottomRow {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1.5fr 1fr;
   gap: var(--spacing-2xl);
 }
 
@@ -33,10 +57,15 @@
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--border-radius-md);
-  padding: var(--spacing-md);
+  padding: var(--spacing-lg);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  transition: border-color var(--transition-speed);
+}
+
+.revisionItem:hover {
+  border-color: var(--color-error);
 }
 
 .revisionInfo {
@@ -45,12 +74,18 @@
   align-items: center;
 }
 
+.alertIcon {
+  color: var(--color-error);
+}
+
 .revisionInfo strong {
   display: block;
+  font-size: var(--font-size-base);
+  color: var(--color-primary);
 }
 
 .revisionInfo p {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
 }
 
@@ -58,37 +93,92 @@
   background-color: var(--color-primary);
   color: var(--color-text-inverse);
   border: none;
-  padding: 8px 16px;
+  padding: 10px 20px;
   border-radius: var(--border-radius-sm);
   font-size: var(--font-size-sm);
   font-weight: 600;
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
+  transition: background-color var(--transition-speed);
+}
+
+.reviseButton:hover {
+  background-color: #2c3e50;
+  box-shadow: var(--shadow-sm);
 }
 
 .subjectGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: 1fr;
   gap: var(--spacing-md);
 }
 
 .subjectCard {
+  cursor: pointer;
   display: flex !important;
   flex-direction: row !important;
   align-items: center;
-  gap: var(--spacing-md);
+  gap: var(--spacing-lg);
+  transition: transform var(--transition-speed), border-color var(--transition-speed);
+}
+
+.subjectCard:hover {
+  transform: translateX(8px);
+  border-color: var(--color-secondary);
 }
 
 .subjectIcon {
-  font-size: 24px;
+  font-size: 32px;
+  background: var(--color-background);
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--border-radius-md);
+}
+
+.subjectInfo strong {
+  font-size: var(--font-size-lg);
+  color: var(--color-primary);
+}
+
+.subjectInfo p {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.emptyCard {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-2xl);
+  border: 2px dashed var(--color-border);
+  background: transparent;
+}
+
+.startLearningButton {
+  margin-top: var(--spacing-lg);
+  background-color: var(--color-secondary);
+  color: var(--color-primary);
+  border: none;
+  padding: 12px 24px;
+  border-radius: var(--border-radius-md);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
 }
 
 .loading, .error {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 200px;
+  height: 400px;
+  font-weight: 600;
   color: var(--color-text-secondary);
 }
 
@@ -96,12 +186,15 @@
   color: var(--color-error);
 }
 
-.empty {
-  color: var(--color-text-secondary);
-  font-style: italic;
+.emptyState {
+  padding: var(--spacing-xl);
+  text-align: center;
+  background: var(--color-surface);
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--color-border);
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1200px) {
   .bottomRow {
     grid-template-columns: 1fr;
   }
