@@ -60,7 +60,7 @@ ai-university/
       cache/
         redis_client.py
       llm/
-        openai_client.py
+        gemini_client.py
       scheduler/
         apscheduler.py
     tests/

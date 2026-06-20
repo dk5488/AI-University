@@ -7,7 +7,7 @@ from app.core.logging import setup_logging, RequestIdMiddleware
 from app.core.errors import AppError, DomainError
 from app.memory.in_memory import create_in_memory_memory_service
 from app.rag.retrieval import RetrievalService
-from app.rag.embeddings import OpenAIEmbeddingClient
+from app.rag.embeddings import GeminiEmbeddingClient
 from app.infrastructure.vector.qdrant_client import QdrantVectorStore
 
 def create_app() -> FastAPI:
@@ -47,8 +47,15 @@ def create_app() -> FastAPI:
     # Initialize Retrieval Service
 
     # For now, we'll initialize them with the configured URLs and keys.
-    embedding_client = OpenAIEmbeddingClient(api_key=settings.openai_api_key)
-    vector_store = QdrantVectorStore(url=settings.qdrant_url)
+    embedding_client = GeminiEmbeddingClient(
+        api_key=settings.gemini_api_key,
+        model=settings.gemini_embedding_model,
+        output_dimensionality=settings.gemini_embedding_dimensions,
+    )
+    vector_store = QdrantVectorStore(
+        url=settings.qdrant_url,
+        vector_size=settings.gemini_embedding_dimensions,
+    )
     
     application.state.retrieval_service = RetrievalService(
         embedding_client=embedding_client,

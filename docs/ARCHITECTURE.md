@@ -32,7 +32,7 @@ flowchart TD
     RAG --> VectorDB["Qdrant"]
     Memory --> Postgres["PostgreSQL"]
     Memory --> Redis["Redis"]
-    Polity --> LLM["OpenAI GPT"]
+    Polity --> LLM["Google Gemini"]
     History --> LLM
     Economy --> LLM
     Master --> LLM
@@ -141,7 +141,7 @@ sequenceDiagram
     participant Polity as Polity Agent
     participant Memory as Memory Service
     participant RAG as RAG Service
-    participant LLM as OpenAI GPT
+    participant LLM as Google Gemini
 
     User->>API: Teach me Fundamental Rights
     API->>Master: route_request(user_id, message)
@@ -226,11 +226,11 @@ flowchart TD
     Backend --> Postgres["PostgreSQL"]
     Backend --> Redis["Redis"]
     Backend --> Qdrant["Qdrant"]
-    Backend --> OpenAI["OpenAI API"]
+    Backend --> Gemini["Gemini API"]
     Worker --> Postgres
     Worker --> Redis
     Worker --> Qdrant
-    Worker --> OpenAI
+    Worker --> Gemini
 ```
 
 ## Data Ownership

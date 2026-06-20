@@ -13,7 +13,10 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://ai_university:ai_university@localhost:5432/ai_university"
     redis_url: str = "redis://localhost:6379/0"
     qdrant_url: str = "http://localhost:6333"
-    openai_api_key: str = ""
+    gemini_api_key: str = ""
+    gemini_chat_model: str = "gemini-2.5-flash"
+    gemini_embedding_model: str = "gemini-embedding-2-preview"
+    gemini_embedding_dimensions: int = 768
 
     model_config = SettingsConfigDict(
         env_file=".env",
