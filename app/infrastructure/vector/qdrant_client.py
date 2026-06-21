@@ -13,8 +13,8 @@ class QdrantVectorStore:
     def __init__(
         self,
         url: str,
-        collection_name: str = "book_chunks",
-        vector_size: int = 1536,  # Default for text-embedding-3-small
+        collection_name: str = "book_chunks_gemini",
+        vector_size: int = 768,  # Default for Gemini embeddings with output_dimensionality=768
     ) -> None:
         self._client = AsyncQdrantClient(url=url)
         self._collection_name = collection_name

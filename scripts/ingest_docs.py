@@ -6,7 +6,7 @@ from uuid import UUID
 from app.core.config import get_settings
 from app.rag.extraction import PdfExtractor
 from app.rag.chunking import Chunker
-from app.rag.embeddings import OpenAIEmbeddingClient
+from app.rag.embeddings import GeminiEmbeddingClient
 from app.rag.ingestion import IngestionService
 from app.infrastructure.vector.qdrant_client import QdrantVectorStore
 
@@ -31,8 +31,15 @@ async def main():
     # Initialize components
     extractor = PdfExtractor()
     chunker = Chunker()
-    embedding_client = OpenAIEmbeddingClient(api_key=settings.openai_api_key)
-    vector_store = QdrantVectorStore(url=settings.qdrant_url)
+    embedding_client = GeminiEmbeddingClient(
+        api_key=settings.gemini_api_key,
+        model=settings.gemini_embedding_model,
+        output_dimensionality=settings.gemini_embedding_dimensions,
+    )
+    vector_store = QdrantVectorStore(
+        url=settings.qdrant_url,
+        vector_size=settings.gemini_embedding_dimensions,
+    )
     
     service = IngestionService(
         extractor=extractor,

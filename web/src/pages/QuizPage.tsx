@@ -4,10 +4,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { generateQuiz, submitQuiz } from '../api/quiz';
 import { MOCK_USER_ID } from '../api/learning';
 import Card from '../components/atoms/Card';
-import { CheckCircle, XCircle, ChevronRight, GraduationCap, Clock, AlertTriangle, Calendar, ArrowLeft } from 'lucide-react';
+import { CheckCircle, XCircle, ChevronRight, GraduationCap, Clock, AlertTriangle, Calendar, ArrowLeft, Sparkles } from 'lucide-react';
 import styles from './QuizPage.module.css';
 
-import { QuizResponse, QuizSubmissionRequest, QuizSubmissionResponse, MCQResult } from '../types/quiz';
+import type { QuizResponse, QuizSubmissionRequest, QuizSubmissionResponse, MCQResult } from '../types/quiz';
 
 const QuizPage: React.FC = () => {
   const { subjectCode, topicSlug } = useParams<{ subjectCode: string; topicSlug: string }>();
@@ -32,7 +32,7 @@ const QuizPage: React.FC = () => {
   });
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     if (!isFinished && !isQuizLoading && !showConfirm) {
       interval = setInterval(() => {
         setSecondsElapsed((prev) => prev + 1);

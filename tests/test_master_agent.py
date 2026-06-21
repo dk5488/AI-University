@@ -19,7 +19,7 @@ async def test_master_agent_routes_polity_teach():
     )
     
     # We need to mock the with_structured_output call
-    master_agent = MasterAgent()
+    master_agent = MasterAgent(api_key="dummy-gemini-key")
     master_agent._router_llm = mock_router
     
     user_id = uuid4()
@@ -44,7 +44,7 @@ async def test_master_agent_routes_mcq_generation():
         confidence=0.9,
     )
     
-    master_agent = MasterAgent()
+    master_agent = MasterAgent(api_key="dummy-gemini-key")
     master_agent._router_llm = mock_router
     
     command = await master_agent.route_request("Generate MCQs on Article 32")

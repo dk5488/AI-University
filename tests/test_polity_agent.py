@@ -38,7 +38,7 @@ async def test_polity_agent_teach_coordinates_services():
     mock_llm_response = MagicMock()
     mock_llm_response.content = "Equality before law is a key pillar of the Indian Constitution."
     
-    agent = PolityAgent(memory_service, retrieval_service, api_key="sk-dummy")
+    agent = PolityAgent(memory_service, retrieval_service, api_key="dummy-gemini-key")
     agent._llm = AsyncMock()
     agent._llm.ainvoke.return_value = mock_llm_response
 

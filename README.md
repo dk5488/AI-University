@@ -26,6 +26,12 @@ Copy environment defaults:
 cp .env.example .env
 ```
 
+Set your Gemini API key in `.env`:
+
+```bash
+GEMINI_API_KEY=your-google-ai-studio-key
+```
+
 Start local infrastructure:
 
 ```bash

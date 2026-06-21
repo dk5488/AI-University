@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
@@ -9,6 +11,8 @@ from app.application.revision_service import RevisionService
 from app.domain.learning import Assessment, AssessmentType
 from app.domain.mcqs import MCQ, MCQOption, Quiz
 from app.memory.contracts import MemoryService
+
+logger = logging.getLogger(__name__)
 
 
 class QuizService:
@@ -29,20 +33,42 @@ class QuizService:
         topic_slug: str,
         count: int = 5,
     ) -> dict[str, Any]:
+        start_time = time.perf_counter()
+        logger.info(
+            "quiz_generate_start user_id=%s subject_code=%s topic_slug=%s count=%s",
+            user_id,
+            subject_code,
+            topic_slug,
+            count,
+        )
+
         # 1. Resolve topic
         topic = await self._memory_service.get_topic_by_slug(subject_code, topic_slug)
         if not topic:
+            logger.warning(
+                "quiz_topic_not_found user_id=%s subject_code=%s topic_slug=%s",
+                user_id,
+                subject_code,
+                topic_slug,
+            )
             raise ValueError(f"Topic {topic_slug} not found for subject {subject_code}")
+        logger.info("quiz_topic_resolved user_id=%s topic_id=%s topic_name=%s", user_id, topic.id, topic.name)
 
         # 2. Generate MCQs using agent
         if subject_code == "polity":
-            quiz_schema = await self._polity_agent.generate_mcqs(
-                user_id=user_id,
-                topic=topic.name,
-                count=count,
-            )
+            try:
+                quiz_schema = await self._polity_agent.generate_mcqs(
+                    user_id=user_id,
+                    topic=topic.name,
+                    count=count,
+                )
+            except Exception:
+                logger.exception("quiz_agent_failed user_id=%s topic=%s count=%s", user_id, topic.name, count)
+                raise
         else:
+            logger.warning("quiz_subject_unsupported user_id=%s subject_code=%s", user_id, subject_code)
             raise ValueError(f"Subject {subject_code} not supported yet")
+        logger.info("quiz_agent_complete user_id=%s generated_questions=%s", user_id, len(quiz_schema.questions))
 
         # 3. Create Quiz domain model
         questions = []
@@ -83,8 +109,16 @@ class QuizService:
             },
             ttl_seconds=3600,
         )
+        logger.info("quiz_session_saved user_id=%s assessment_id=%s ttl_seconds=3600", user_id, assessment_id)
 
         # 5. Return quiz to user (WITHOUT correct options or explanations)
+        logger.info(
+            "quiz_generate_complete user_id=%s assessment_id=%s question_count=%s duration_ms=%.2f",
+            user_id,
+            assessment_id,
+            len(quiz.questions),
+            (time.perf_counter() - start_time) * 1000,
+        )
         return {
             "assessment_id": assessment_id,
             "questions": [
@@ -103,10 +137,20 @@ class QuizService:
         assessment_id: UUID,
         answers: list[dict[str, Any]],
     ) -> dict[str, Any]:
+        start_time = time.perf_counter()
+        logger.info(
+            "quiz_submit_start user_id=%s assessment_id=%s answer_count=%s",
+            user_id,
+            assessment_id,
+            len(answers),
+        )
+
         # 1. Retrieve quiz from session
         session_data = await self._memory_service.get_session(user_id, f"quiz:{assessment_id}")
         if not session_data:
+            logger.warning("quiz_session_missing user_id=%s assessment_id=%s", user_id, assessment_id)
             raise ValueError("Quiz not found or expired")
+        logger.info("quiz_session_loaded user_id=%s assessment_id=%s", user_id, assessment_id)
 
         # 2. Score
         score = 0
@@ -161,9 +205,23 @@ class QuizService:
 
         # 5. Plan Revisions if needed
         await self._revision_service.plan_revisions_for_assessment(assessment)
+        logger.info(
+            "quiz_revision_planned user_id=%s assessment_id=%s weak_topic_count=%s",
+            user_id,
+            assessment_id,
+            len(weak_topics),
+        )
 
         # 6. Clear session
         await self._memory_service.clear_session(user_id, f"quiz:{assessment_id}")
+        logger.info(
+            "quiz_submit_complete user_id=%s assessment_id=%s score=%s total=%s duration_ms=%.2f",
+            user_id,
+            assessment_id,
+            score,
+            total,
+            (time.perf_counter() - start_time) * 1000,
+        )
 
         return {
             "score": score,
