@@ -1,7 +1,7 @@
-import React, { useState, useCallback, ReactNode } from 'react';
+import React, { useState, useCallback, type ReactNode } from 'react';
 import { X, CheckCircle, AlertCircle, Info } from 'lucide-react';
 import styles from './Toast.module.css';
-import { ToastContext, ToastType } from './ToastContextDefinition';
+import { ToastContext, type ToastType } from './ToastContextDefinition';
 
 interface Toast {
   id: string;

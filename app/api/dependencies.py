@@ -7,6 +7,7 @@ from app.application.chat_service import ChatService
 from app.application.quiz_service import QuizService
 from app.application.revision_service import RevisionService
 from app.application.learning_service import LearningService
+from app.core.config import get_settings
 from app.memory.contracts import MemoryService
 from app.rag.retrieval import RetrievalService
 
@@ -23,9 +24,12 @@ def get_quiz_service(
     memory_service: MemoryService = Depends(get_memory_service),
     retrieval_service: RetrievalService = Depends(get_retrieval_service),
 ) -> QuizService:
+    settings = get_settings()
     polity_agent = PolityAgent(
         memory_service=memory_service,
         retrieval_service=retrieval_service,
+        model=settings.gemini_chat_model,
+        api_key=settings.gemini_api_key,
     )
     revision_service = RevisionService(memory_service)
     return QuizService(
@@ -52,10 +56,16 @@ def get_chat_service(
     retrieval_service: RetrievalService = Depends(get_retrieval_service),
     quiz_service: QuizService = Depends(get_quiz_service),
 ) -> ChatService:
-    master_agent = MasterAgent()
+    settings = get_settings()
+    master_agent = MasterAgent(
+        model=settings.gemini_chat_model,
+        api_key=settings.gemini_api_key,
+    )
     polity_agent = PolityAgent(
         memory_service=memory_service,
         retrieval_service=retrieval_service,
+        model=settings.gemini_chat_model,
+        api_key=settings.gemini_api_key,
     )
     return ChatService(
         master_agent=master_agent,

@@ -36,7 +36,7 @@ async def test_ingestion_service_coordinates_workflow(tmp_path):
     chunker.create_chunks.side_effect = side_effect
 
     embedding_client = AsyncMock()
-    embedding_client.embed_batch.return_value = [[0.1] * 1536, [0.2] * 1536]
+    embedding_client.embed_batch.return_value = [[0.1] * 768, [0.2] * 768]
 
     vector_store = AsyncMock()
 

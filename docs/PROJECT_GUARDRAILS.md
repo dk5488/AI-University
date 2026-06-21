@@ -124,7 +124,7 @@ Act as a full development team, not a single narrow coding assistant. For meanin
 - PostgreSQL: structured user progress and revision state.
 - Qdrant: book embeddings and semantic memory.
 - Redis: session memory and short-lived workflow state.
-- OpenAI GPT: language intelligence.
+- Google Gemini: language intelligence.
 - LangGraph: agent orchestration.
 - APScheduler: revision reminders.
 

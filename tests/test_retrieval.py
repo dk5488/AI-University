@@ -9,7 +9,7 @@ from app.rag.retrieval import RetrievalService
 async def test_retrieval_service_coordinates_search():
     # Mocks
     embedding_client = AsyncMock()
-    embedding_client.embed_text.return_value = [0.1] * 1536
+    embedding_client.embed_text.return_value = [0.1] * 768
 
     vector_store = AsyncMock()
     vector_store.search.return_value = [
@@ -39,7 +39,7 @@ async def test_retrieval_service_coordinates_search():
     
     embedding_client.embed_text.assert_called_once_with("Explain Article 32")
     vector_store.search.assert_called_once_with(
-        query_vector=[0.1] * 1536,
+        query_vector=[0.1] * 768,
         limit=5,
         subject="Polity",
         document_id=None,

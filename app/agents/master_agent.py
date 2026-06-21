@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import logging
+import time
 from typing import Annotated, Literal, TypedDict
 from uuid import UUID
 
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
 from pydantic import BaseModel, Field
 
 from app.agents.contracts import Intent, RoutedCommand, Subject
+
+logger = logging.getLogger(__name__)
 
 
 class RouteSchema(BaseModel):
@@ -27,10 +31,23 @@ class AgentState(TypedDict):
 
 
 class MasterAgent:
-    def __init__(self, model: str = "gpt-4o-mini", api_key: str | None = None) -> None:
-        self._llm = ChatOpenAI(model=model, api_key=api_key)
+    def __init__(self, model: str = "gemini-2.5-flash", api_key: str | None = None) -> None:
+        self._model = model
+        kwargs: dict[str, object] = {"model": model, "temperature": 0, "max_retries": 2}
+        if api_key:
+            kwargs["api_key"] = api_key
+
+        try:
+            self._llm = ChatGoogleGenerativeAI(**kwargs)
+        except TypeError:
+            if api_key:
+                kwargs.pop("api_key", None)
+                kwargs["google_api_key"] = api_key
+            self._llm = ChatGoogleGenerativeAI(**kwargs)
+
         self._router_llm = self._llm.with_structured_output(RouteSchema)
         self._graph = self._build_graph()
+        logger.info("master_agent_initialized provider=gemini model=%s api_key_configured=%s", model, bool(api_key))
 
     def _build_graph(self) -> StateGraph:
         builder = StateGraph(AgentState)
@@ -56,7 +73,33 @@ class MasterAgent:
         )
         
         messages = [SystemMessage(content=system_prompt)] + state["messages"]
-        route = await self._router_llm.ainvoke(messages)
+        start_time = time.perf_counter()
+        logger.info(
+            "master_agent_classify_start provider=gemini model=%s user_id=%s session_id=%s message_count=%s",
+            self._model,
+            state.get("user_id"),
+            state.get("session_id"),
+            len(state["messages"]),
+        )
+        try:
+            route = await self._router_llm.ainvoke(messages)
+        except Exception:
+            logger.exception(
+                "master_agent_classify_failed provider=gemini model=%s user_id=%s session_id=%s",
+                self._model,
+                state.get("user_id"),
+                state.get("session_id"),
+            )
+            raise
+        logger.info(
+            "master_agent_classify_complete provider=gemini model=%s subject=%s intent=%s topic=%s confidence=%.2f duration_ms=%.2f",
+            self._model,
+            route.subject,
+            route.intent,
+            route.topic,
+            route.confidence,
+            (time.perf_counter() - start_time) * 1000,
+        )
         return {"route": route}
 
     async def route_request(
@@ -65,6 +108,13 @@ class MasterAgent:
         user_id: UUID | None = None,
         session_id: str | None = None,
     ) -> RoutedCommand:
+        start_time = time.perf_counter()
+        logger.info(
+            "master_agent_route_start user_id=%s session_id=%s message_length=%s",
+            user_id,
+            session_id,
+            len(message),
+        )
         state: AgentState = {
             "messages": [HumanMessage(content=message)],
             "route": None,
@@ -74,6 +124,14 @@ class MasterAgent:
         
         result = await self._graph.ainvoke(state)
         route: RouteSchema = result["route"]
+        logger.info(
+            "master_agent_route_complete user_id=%s subject=%s intent=%s topic=%s duration_ms=%.2f",
+            user_id,
+            route.subject,
+            route.intent,
+            route.topic,
+            (time.perf_counter() - start_time) * 1000,
+        )
         
         return RoutedCommand(
             subject=route.subject,
