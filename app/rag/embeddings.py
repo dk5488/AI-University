@@ -9,6 +9,8 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
+
 
 class EmbeddingClient(Protocol):
     async def embed_text(self, text: str) -> list[float]:

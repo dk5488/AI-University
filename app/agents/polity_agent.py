@@ -69,17 +69,32 @@ class PolityAgent:
         
         # 1. Get learning context
         topic_slug = topic.lower().replace(" ", "-")
+        logger.info("polity_teach_context_start user_id=%s topic_slug=%s", user_id, topic_slug)
         context = await self._memory_service.get_learning_context(
             user_id=user_id,
             subject_code="polity",
             topic_slug=topic_slug,
         )
+        logger.info(
+            "polity_teach_context_complete user_id=%s topic_slug=%s has_progress=%s weak_topic_count=%s",
+            user_id,
+            topic_slug,
+            bool(context.progress),
+            len(context.weak_topics),
+        )
 
         # 2. Retrieve source material
+        logger.info("polity_teach_retrieval_start user_id=%s topic=%s limit=3", user_id, topic)
         retrieval_response = await self._retrieval_service.retrieve(
             query=topic,
             subject="Polity",
             limit=3,
+        )
+        logger.info(
+            "polity_teach_retrieval_complete user_id=%s topic=%s chunk_count=%s",
+            user_id,
+            topic,
+            len(retrieval_response.chunks),
         )
 
         # 3. Build Prompt
@@ -118,6 +133,13 @@ class PolityAgent:
                 created_at=datetime.now(timezone.utc),
             )
         )
+        logger.info(
+            "polity_teach_complete user_id=%s topic=%s source_count=%s duration_ms=%.2f",
+            user_id,
+            topic,
+            len(retrieval_response.chunks),
+            (time.perf_counter() - start_time) * 1000,
+        )
 
         return {
             "answer": response.content,
@@ -148,17 +170,32 @@ class PolityAgent:
         
         # 1. Get context
         topic_slug = topic.lower().replace(" ", "-")
+        logger.info("polity_generate_mcqs_context_start user_id=%s topic_slug=%s", user_id, topic_slug)
         context = await self._memory_service.get_learning_context(
             user_id=user_id,
             subject_code="polity",
             topic_slug=topic_slug,
         )
+        logger.info(
+            "polity_generate_mcqs_context_complete user_id=%s topic_slug=%s has_progress=%s weak_topic_count=%s",
+            user_id,
+            topic_slug,
+            bool(context.progress),
+            len(context.weak_topics),
+        )
 
         # 2. Retrieve source material
+        logger.info("polity_generate_mcqs_retrieval_start user_id=%s topic=%s limit=5", user_id, topic)
         retrieval_response = await self._retrieval_service.retrieve(
             query=f"MCQs on {topic}",
             subject="Polity",
             limit=5,
+        )
+        logger.info(
+            "polity_generate_mcqs_retrieval_complete user_id=%s topic=%s chunk_count=%s",
+            user_id,
+            topic,
+            len(retrieval_response.chunks),
         )
 
         # 3. Build Prompt

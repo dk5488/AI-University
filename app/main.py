@@ -1,5 +1,8 @@
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import get_settings
@@ -10,11 +13,22 @@ from app.rag.retrieval import RetrievalService
 from app.rag.embeddings import GeminiEmbeddingClient
 from app.infrastructure.vector.qdrant_client import QdrantVectorStore
 
+logger = logging.getLogger(__name__)
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
 
     # Initialize Logging
     setup_logging()
+    logger.info(
+        "app_start name=%s version=%s environment=%s openai_key_configured=%s qdrant_url=%s",
+        settings.app_name,
+        settings.app_version,
+        settings.environment,
+        bool(settings.openai_api_key),
+        settings.qdrant_url,
+    )
 
     application = FastAPI(
         title=settings.app_name,
@@ -24,6 +38,13 @@ def create_app() -> FastAPI:
     )
 
     # Add Middleware
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     application.add_middleware(RequestIdMiddleware)
 
     # Exception Handlers
@@ -43,6 +64,7 @@ def create_app() -> FastAPI:
 
     # Initialize Memory Service
     application.state.memory_service = create_in_memory_memory_service()
+    logger.info("memory_service_initialized backend=in_memory")
     
     # Initialize Retrieval Service
 
@@ -61,6 +83,7 @@ def create_app() -> FastAPI:
         embedding_client=embedding_client,
         vector_store=vector_store,
     )
+    logger.info("retrieval_service_initialized embedding_model=text-embedding-3-small")
     
     application.include_router(api_router, prefix=settings.api_v1_prefix)
 
