@@ -22,11 +22,11 @@ def create_app() -> FastAPI:
     # Initialize Logging
     setup_logging()
     logger.info(
-        "app_start name=%s version=%s environment=%s openai_key_configured=%s qdrant_url=%s",
+        "app_start name=%s version=%s environment=%s gemini_key_configured=%s qdrant_url=%s",
         settings.app_name,
         settings.app_version,
         settings.environment,
-        bool(settings.openai_api_key),
+        bool(settings.gemini_api_key),
         settings.qdrant_url,
     )
 
