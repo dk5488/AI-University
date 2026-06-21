@@ -90,8 +90,26 @@ class PolityAgent:
         logger.info("polity_teach_start provider=gemini user_id=%s topic=%s message_length=%s", user_id, topic, len(message or ""))
         start_time = time.perf_counter()
         
+        # 0. Handle Dynamic/Auto Topic Resolution
+        resolved_topic = topic
+        status_message = ""
+        if topic.lower() in ("auto", "next", "status"):
+            current_topic, progress = await self._memory_service.get_current_topic(user_id, "polity")
+            if current_topic:
+                resolved_topic = current_topic.name
+                pct = progress.completion_percent if progress else 0
+                if topic.lower() == "status":
+                    status_message = f"You are currently on **{resolved_topic}** ({pct}% complete). "
+                elif pct > 0 and pct < 100:
+                    status_message = f"You haven't finished **{resolved_topic}** yet ({pct}% complete). Let's complete this before moving forward. "
+                else:
+                    status_message = f"Moving on to the next module: **{resolved_topic}**. "
+            else:
+                resolved_topic = "Historical Background"  # fallback
+        
+        topic_slug = resolved_topic.lower().replace(" ", "-")
+
         # 1. Get learning context
-        topic_slug = topic.lower().replace(" ", "-")
         logger.info("polity_teach_context_start user_id=%s topic_slug=%s", user_id, topic_slug)
         context = await self._memory_service.get_learning_context(
             user_id=user_id,
@@ -109,9 +127,9 @@ class PolityAgent:
         # 2. Attempt RAG retrieval (optional enhancement — works without it)
         rag_chunks = []
         try:
-            logger.info("polity_teach_retrieval_start user_id=%s topic=%s limit=3", user_id, topic)
+            logger.info("polity_teach_retrieval_start user_id=%s topic=%s limit=3", user_id, resolved_topic)
             retrieval_response = await self._retrieval_service.retrieve(
-                query=topic,
+                query=resolved_topic,
                 subject="Polity",
                 limit=3,
             )
@@ -119,15 +137,15 @@ class PolityAgent:
             logger.info(
                 "polity_teach_retrieval_complete user_id=%s topic=%s chunk_count=%s",
                 user_id,
-                topic,
+                resolved_topic,
                 len(rag_chunks),
             )
         except Exception:
-            logger.warning("polity_teach_retrieval_skipped user_id=%s topic=%s reason=retrieval_failed", user_id, topic)
+            logger.warning("polity_teach_retrieval_skipped user_id=%s topic=%s reason=retrieval_failed", user_id, resolved_topic)
 
         # 3. Build Prompt (knowledge-base-aware, with optional RAG enrichment)
-        system_prompt = self._build_teaching_system_prompt(context, rag_chunks)
-        user_message = message or f"Teach me about {topic}."
+        system_prompt = self._build_teaching_system_prompt(context, rag_chunks, current_topic_name=resolved_topic)
+        user_message = message or f"Teach me about {resolved_topic}."
 
         # 4. Generate Answer
         messages = [
@@ -136,20 +154,25 @@ class PolityAgent:
         ]
         
         try:
-            logger.info("polity_teach_llm_start provider=gemini user_id=%s topic=%s model=%s", user_id, topic, self._model)
+            logger.info("polity_teach_llm_start provider=gemini user_id=%s topic=%s model=%s", user_id, resolved_topic, self._model)
             response = await self._llm.ainvoke(messages)
             latency = time.perf_counter() - start_time
             logger.info(
                 "polity_teach_llm_complete provider=gemini user_id=%s topic=%s model=%s duration_ms=%.2f response_length=%s",
                 user_id,
-                topic,
+                resolved_topic,
                 self._model,
                 latency * 1000,
                 len(str(response.content)),
             )
         except Exception:
-            logger.exception("polity_teach_llm_failed provider=gemini user_id=%s topic=%s model=%s", user_id, topic, self._model)
+            logger.exception("polity_teach_llm_failed provider=gemini user_id=%s topic=%s model=%s", user_id, resolved_topic, self._model)
             raise
+
+        # prepend status message if auto resolved
+        final_answer = response.content
+        if status_message:
+            final_answer = status_message + "\n\n" + final_answer
 
         # 5. Record Learning Event
         await self._memory_service.add_semantic_observation(
@@ -157,7 +180,7 @@ class PolityAgent:
                 user_id=user_id,
                 subject_code="polity",
                 topic_slug=topic_slug,
-                observation=f"Taught topic: {topic}. User requested: {message or 'initial explanation'}",
+                observation=f"Taught topic: {resolved_topic}. User requested: {message or 'initial explanation'}",
                 created_at=datetime.now(timezone.utc),
             )
         )
@@ -339,7 +362,7 @@ class PolityAgent:
             logger.exception("polity_evaluate_mcq_llm_failed provider=gemini user_id=%s topic=%s model=%s fallback=true", user_id, topic, self._model)
             return "Good attempt. Review your weak areas and keep practicing."
 
-    def _build_teaching_system_prompt(self, context: Any, chunks: list[Any]) -> str:
+    def _build_teaching_system_prompt(self, context: Any, chunks: list[Any], current_topic_name: str | None = None) -> str:
         # Context summary
         progress_info = "New topic for the user."
         if context.progress:
@@ -359,19 +382,23 @@ class PolityAgent:
             ])
             rag_section = f"\n\nADDITIONAL RETRIEVED SOURCE MATERIAL:\n{sources_text}"
 
+        topic_context = f"\nCURRENT SYLLABUS TOPIC: {current_topic_name}\n" if current_topic_name else ""
+
         return (
             "You are the Polity Expert at AI University. Your goal is to teach Indian Polity "
             "for the UPSC Civil Services Examination. Use a professional, clear, and analytical tone.\n\n"
             f"{self.KNOWLEDGE_BASE}\n\n"
             f"USER CONTEXT:\n- {progress_info}\n- Weak Areas: {weak_areas}\n"
+            f"{topic_context}"
             f"{rag_section}\n\n"
-            "INSTRUCTIONS:\n"
+            "INSTRUCTIONS & SCIENTIFIC LEARNING METHODS:\n"
             "1. Ground your answer strictly in the knowledge base sources listed above.\n"
             "2. Always cite the specific book and chapter (e.g., 'As per Laxmikanth, Chapter 3...').\n"
-            "3. If the user has weak areas, try to clarify those points if relevant.\n"
-            "4. Use UPSC-style analysis (importance, constitutional provisions, articles, amendments, implications).\n"
-            "5. Structure your response with clear headings, key points, and constitutional references.\n"
-            "6. If additional retrieved source material is provided above, incorporate it into your answer."
+            "3. Chunking: Break complex topics into small, digestible chunks. Do not output a massive wall of text.\n"
+            "4. Active Recall: At the end of your explanation, provide 2-3 quick 'Active Recall' questions to test the user's immediate understanding.\n"
+            "5. If the user has weak areas, try to clarify those points if relevant.\n"
+            "6. Use UPSC-style analysis (importance, constitutional provisions, articles, amendments, implications).\n"
+            "7. Structure your response with clear headings, bullet points, and constitutional references."
         )
 
 

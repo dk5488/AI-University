@@ -69,7 +69,10 @@ class MasterAgent:
             "Intents: Teach (learning/explaining), GenerateMCQ (creating quizzes), "
             "EvaluateMCQ (checking answers), Revise (spaced repetition), "
             "Explain (deep dive), Compare (cross-topic comparison). "
-            "If the request is ambiguous, use Unknown for subject/intent."
+            "If the request is ambiguous, use Unknown for subject/intent. "
+            "CRITICAL: If the user asks generic learning questions like 'start teaching me', "
+            "'what is the next module', 'where am I', or 'teach me next', set the intent to Teach "
+            "and the topic to 'auto'. This signals the subject agent to look up their progress."
         )
         
         messages = [SystemMessage(content=system_prompt)] + state["messages"]
