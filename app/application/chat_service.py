@@ -62,26 +62,6 @@ class ChatService:
         if command.subject == Subject.POLITY:
             topic = command.topic or "Polity"
             
-            if command.intent == Intent.TEACH:
-                logger.info("chat_dispatch target=polity.teach user_id=%s topic=%s", user_id, topic)
-                try:
-                    result = await self._polity_agent.teach(
-                        user_id=user_id,
-                        topic=topic,
-                        message=message,
-                    )
-                except Exception:
-                    logger.exception("chat_dispatch_failed target=polity.teach user_id=%s topic=%s", user_id, topic)
-                    raise
-                logger.info(
-                    "chat_complete user_id=%s subject=%s intent=%s duration_ms=%.2f",
-                    user_id,
-                    command.subject,
-                    command.intent,
-                    (time.perf_counter() - start_time) * 1000,
-                )
-                return result
-            
             if command.intent == Intent.GENERATE_MCQ:
                 logger.info("chat_dispatch target=mcq_prompt user_id=%s topic=%s", user_id, topic)
                 return {
@@ -91,8 +71,26 @@ class ChatService:
                     "sources": [],
                     "next_actions": [f"Generate MCQs on {topic}"],
                 }
-            
-            # Future: Handle other intents
+
+            # Default to teach for all other intents (including Teach, Explain, Compare, etc.)
+            logger.info("chat_dispatch target=polity.teach user_id=%s topic=%s", user_id, topic)
+            try:
+                result = await self._polity_agent.teach(
+                    user_id=user_id,
+                    topic=topic,
+                    message=message,
+                )
+            except Exception:
+                logger.exception("chat_dispatch_failed target=polity.teach user_id=%s topic=%s", user_id, topic)
+                raise
+            logger.info(
+                "chat_complete user_id=%s subject=%s intent=%s duration_ms=%.2f",
+                user_id,
+                command.subject,
+                command.intent,
+                (time.perf_counter() - start_time) * 1000,
+            )
+            return result
         
         # 3. Fallback for unknown or unsupported subjects
         logger.info(

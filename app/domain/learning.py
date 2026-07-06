@@ -48,6 +48,7 @@ class Topic:
     subject_id: UUID
     name: str
     slug: str
+    order: int = 0
     parent_topic_id: UUID | None = None
     id: UUID = field(default_factory=uuid4)
 
@@ -56,6 +57,8 @@ class Topic:
             raise ValueError("topic name is required")
         if not self.slug.strip():
             raise ValueError("topic slug is required")
+        if self.order < 0:
+            raise ValueError("order cannot be negative")
 
 
 @dataclass(frozen=True, slots=True)

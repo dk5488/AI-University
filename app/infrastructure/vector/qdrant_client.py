@@ -32,6 +32,20 @@ class QdrantVectorStore:
                 ),
             )
 
+    async def recreate_collection(self) -> None:
+        """Drop and recreate the collection (useful for re-seeding)."""
+        collections = await self._client.get_collections()
+        exists = any(c.name == self._collection_name for c in collections.collections)
+        if exists:
+            await self._client.delete_collection(collection_name=self._collection_name)
+        await self._client.create_collection(
+            collection_name=self._collection_name,
+            vectors_config=models.VectorParams(
+                size=self._vector_size,
+                distance=models.Distance.COSINE,
+            ),
+        )
+
     async def upsert_chunks(
         self,
         chunks: list[DocumentChunk],
@@ -90,12 +104,12 @@ class QdrantVectorStore:
         if must_filters:
             query_filter = models.Filter(must=must_filters)
 
-        results = await self._client.search(
+        results = await self._client.query_points(
             collection_name=self._collection_name,
-            query_vector=query_vector,
+            query=query_vector,
             query_filter=query_filter,
             limit=limit,
             with_payload=True,
         )
         
-        return [hit.payload for hit in results if hit.payload is not None]
+        return [hit.payload for hit in results.points if hit.payload is not None]

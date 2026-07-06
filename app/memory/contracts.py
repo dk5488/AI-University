@@ -70,6 +70,9 @@ class StructuredMemoryStore(Protocol):
     async def list_topics(self, subject_code: str) -> tuple[Topic, ...]:
         ...
 
+    async def get_current_topic(self, user_id: UUID, subject_code: str) -> tuple[Topic | None, Progress | None]:
+        ...
+
 
 class SemanticMemoryStore(Protocol):
     async def add_observation(self, observation: SemanticObservation) -> None:
@@ -191,3 +194,6 @@ class MemoryService:
 
     async def list_topics(self, subject_code: str) -> tuple[Topic, ...]:
         return await self._structured.list_topics(subject_code)
+
+    async def get_current_topic(self, user_id: UUID, subject_code: str) -> tuple[Topic | None, Progress | None]:
+        return await self._structured.get_current_topic(user_id, subject_code)

@@ -19,10 +19,18 @@ class InMemoryStructuredMemoryStore:
 
     def _seed_data(self) -> None:
         polity = Subject(code="polity", name="Indian Polity")
+        # Define the syllabus with order
         topics = [
-            Topic(subject_id=polity.id, name="Fundamental Rights", slug="fundamental-rights"),
-            Topic(subject_id=polity.id, name="DPSP", slug="dpsp"),
-            Topic(subject_id=polity.id, name="President", slug="president"),
+            Topic(subject_id=polity.id, name="Historical Background", slug="historical-background", order=1),
+            Topic(subject_id=polity.id, name="Making of the Constitution", slug="making-of-constitution", order=2),
+            Topic(subject_id=polity.id, name="Salient Features of the Constitution", slug="salient-features", order=3),
+            Topic(subject_id=polity.id, name="Preamble of the Constitution", slug="preamble", order=4),
+            Topic(subject_id=polity.id, name="Union and its Territory", slug="union-territory", order=5),
+            Topic(subject_id=polity.id, name="Citizenship", slug="citizenship", order=6),
+            Topic(subject_id=polity.id, name="Fundamental Rights", slug="fundamental-rights", order=7),
+            Topic(subject_id=polity.id, name="Directive Principles of State Policy", slug="dpsp", order=8),
+            Topic(subject_id=polity.id, name="Fundamental Duties", slug="fundamental-duties", order=9),
+            Topic(subject_id=polity.id, name="Amendment of the Constitution", slug="amendment", order=10),
         ]
         for topic in topics:
             self._topics[("polity", topic.slug)] = topic
@@ -102,6 +110,22 @@ class InMemoryStructuredMemoryStore:
             for (code, _), topic in self._topics.items()
             if code == subject_code
         )
+
+    async def get_current_topic(self, user_id: UUID, subject_code: str) -> tuple[Topic | None, Progress | None]:
+        # Get all topics for the subject and sort by order
+        topics = sorted(
+            [t for (code, _), t in self._topics.items() if code == subject_code],
+            key=lambda t: t.order
+        )
+        
+        # Iterate through ordered topics to find the first one that isn't complete
+        for topic in topics:
+            progress = self._progress.get((user_id, topic.id))
+            if not progress or progress.completion_percent < 100:
+                return topic, progress
+                
+        # If all topics are 100% complete, return the last one
+        return (topics[-1] if topics else None), (self._progress.get((user_id, topics[-1].id)) if topics else None)
 
 
 class InMemorySemanticMemoryStore:
