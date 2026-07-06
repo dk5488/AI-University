@@ -4,6 +4,7 @@ from fastapi import Request, Depends
 from app.agents.master_agent import MasterAgent
 from app.agents.polity_agent import PolityAgent
 from app.application.chat_service import ChatService
+from app.application.curriculum_service import CurriculumService
 from app.application.quiz_service import QuizService
 from app.application.revision_service import RevisionService
 from app.application.learning_service import LearningService
@@ -18,6 +19,17 @@ def get_memory_service(request: Request) -> MemoryService:
 
 def get_retrieval_service(request: Request) -> RetrievalService:
     return cast(RetrievalService, request.app.state.retrieval_service)
+
+
+def get_curriculum_service(
+    memory_service: MemoryService = Depends(get_memory_service),
+) -> CurriculumService:
+    settings = get_settings()
+    return CurriculumService(
+        memory_service=memory_service,
+        model=settings.gemini_chat_model,
+        api_key=settings.gemini_api_key,
+    )
 
 
 def get_quiz_service(
@@ -47,8 +59,9 @@ def get_revision_service(
 
 def get_learning_service(
     memory_service: MemoryService = Depends(get_memory_service),
+    curriculum_service: CurriculumService = Depends(get_curriculum_service),
 ) -> LearningService:
-    return LearningService(memory_service)
+    return LearningService(memory_service, curriculum_service=curriculum_service)
 
 
 def get_chat_service(

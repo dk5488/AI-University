@@ -175,11 +175,16 @@ const DashboardPage: React.FC = () => {
                 onClick={() => navigate(`/chat?subject=${s.code}`)}
               >
                 <div className={styles.subjectIcon}>
-                  {s.code === 'POLITY' ? '🏛️' : '📚'}
+                  {s.code === 'POLITY' || s.code === 'polity' ? '🏛️' : '📚'}
                 </div>
                 <div className={styles.subjectInfo}>
                   <strong>{s.name}</strong>
-                  <p>{s.topics_count} Topics Covered</p>
+                  <p>{s.topics_count} Topics Studied</p>
+                  {s.current_position && (
+                    <p className={styles.currentPosition}>
+                      📍 Currently on: {s.current_position}
+                    </p>
+                  )}
                 </div>
               </Card>
             ))}

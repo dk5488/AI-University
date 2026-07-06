@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, TypedDict
 from uuid import UUID
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
@@ -33,17 +33,15 @@ class AgentState(TypedDict):
 class MasterAgent:
     def __init__(self, model: str = "gemini-2.5-flash", api_key: str | None = None) -> None:
         self._model = model
-        kwargs: dict[str, object] = {"model": model, "temperature": 0, "max_retries": 2}
+        kwargs: dict[str, object] = {
+            "model": model,
+            "temperature": 0.0,
+            "max_retries": 2,
+        }
         if api_key:
-            kwargs["api_key"] = api_key
+            kwargs["google_api_key"] = api_key
 
-        try:
-            self._llm = ChatGoogleGenerativeAI(**kwargs)
-        except TypeError:
-            if api_key:
-                kwargs.pop("api_key", None)
-                kwargs["google_api_key"] = api_key
-            self._llm = ChatGoogleGenerativeAI(**kwargs)
+        self._llm = ChatGoogleGenerativeAI(**kwargs)
 
         self._router_llm = self._llm.with_structured_output(RouteSchema)
         self._graph = self._build_graph()

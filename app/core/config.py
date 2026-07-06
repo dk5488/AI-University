@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     gemini_chat_model: str = "gemini-2.5-flash"
     gemini_embedding_model: str = "gemini-embedding-2-preview"
     gemini_embedding_dimensions: int = 768
+
+    @field_validator("gemini_chat_model", "gemini_embedding_model", mode="before")
+    @classmethod
+    def normalize_gemini_model_name(cls, value: str) -> str:
+        if isinstance(value, str) and value.startswith("google/"):
+            return value.removeprefix("google/")
+        return value
 
     model_config = SettingsConfigDict(
         env_file=".env",

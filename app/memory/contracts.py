@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from app.domain.curriculum import CurriculumNode, CurriculumProgress, NodeStatus
 from app.domain.learning import Assessment, LearningContext, Progress, RevisionTask, Topic
 
 
@@ -71,6 +72,34 @@ class StructuredMemoryStore(Protocol):
         ...
 
     async def get_current_topic(self, user_id: UUID, subject_code: str) -> tuple[Topic | None, Progress | None]:
+        ...
+
+    # ---- Curriculum Methods ----
+
+    async def store_curriculum(self, subject_code: str, nodes: list[CurriculumNode]) -> None:
+        ...
+
+    async def get_curriculum(self, subject_code: str) -> list[CurriculumNode]:
+        ...
+
+    async def get_curriculum_node(self, node_id: str) -> CurriculumNode | None:
+        ...
+
+    async def get_leaf_nodes(self, subject_code: str) -> list[CurriculumNode]:
+        ...
+
+    async def get_curriculum_progress(self, user_id: UUID, subject_code: str) -> list[CurriculumProgress]:
+        ...
+
+    async def upsert_curriculum_progress(
+        self, user_id: UUID, node_id: str, status: NodeStatus,
+        started_at: datetime | None = None, completed_at: datetime | None = None,
+    ) -> CurriculumProgress:
+        ...
+
+    async def get_current_curriculum_position(
+        self, user_id: UUID, subject_code: str,
+    ) -> tuple[CurriculumNode | None, CurriculumProgress | None]:
         ...
 
 
@@ -197,3 +226,33 @@ class MemoryService:
 
     async def get_current_topic(self, user_id: UUID, subject_code: str) -> tuple[Topic | None, Progress | None]:
         return await self._structured.get_current_topic(user_id, subject_code)
+
+    # ---- Curriculum Pass-throughs ----
+
+    async def store_curriculum(self, subject_code: str, nodes: list[CurriculumNode]) -> None:
+        await self._structured.store_curriculum(subject_code, nodes)
+
+    async def get_curriculum(self, subject_code: str) -> list[CurriculumNode]:
+        return await self._structured.get_curriculum(subject_code)
+
+    async def get_curriculum_node(self, node_id: str) -> CurriculumNode | None:
+        return await self._structured.get_curriculum_node(node_id)
+
+    async def get_leaf_nodes(self, subject_code: str) -> list[CurriculumNode]:
+        return await self._structured.get_leaf_nodes(subject_code)
+
+    async def get_curriculum_progress(self, user_id: UUID, subject_code: str) -> list[CurriculumProgress]:
+        return await self._structured.get_curriculum_progress(user_id, subject_code)
+
+    async def upsert_curriculum_progress(
+        self, user_id: UUID, node_id: str, status: NodeStatus,
+        started_at: datetime | None = None, completed_at: datetime | None = None,
+    ) -> CurriculumProgress:
+        return await self._structured.upsert_curriculum_progress(
+            user_id, node_id, status, started_at, completed_at,
+        )
+
+    async def get_current_curriculum_position(
+        self, user_id: UUID, subject_code: str,
+    ) -> tuple[CurriculumNode | None, CurriculumProgress | None]:
+        return await self._structured.get_current_curriculum_position(user_id, subject_code)

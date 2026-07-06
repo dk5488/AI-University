@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import health, sessions, chat, mcqs, revisions, learning
+from app.api.routes import health, sessions, chat, mcqs, revisions, learning, curriculum
 
 
 api_router = APIRouter()
@@ -10,3 +10,4 @@ api_router.include_router(chat.router)
 api_router.include_router(mcqs.router)
 api_router.include_router(revisions.router)
 api_router.include_router(learning.router)
+api_router.include_router(curriculum.router)

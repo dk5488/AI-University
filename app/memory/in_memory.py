@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
+from app.domain.curriculum import CurriculumLevel, CurriculumNode, CurriculumProgress, NodeStatus
 from app.domain.learning import Assessment, Progress, RevisionTask, Subject, Topic, RevisionStatus
 from app.memory.contracts import MemoryService, ProgressUpdate, SemanticObservation
 
@@ -15,25 +16,10 @@ class InMemoryStructuredMemoryStore:
         self._assessments: dict[UUID, list[Assessment]] = defaultdict(list)
         self._revision_tasks: dict[UUID, RevisionTask] = {}
         self._topics: dict[tuple[str, str], Topic] = {}
-        self._seed_data()
-
-    def _seed_data(self) -> None:
-        polity = Subject(code="polity", name="Indian Polity")
-        # Define the syllabus with order
-        topics = [
-            Topic(subject_id=polity.id, name="Historical Background", slug="historical-background", order=1),
-            Topic(subject_id=polity.id, name="Making of the Constitution", slug="making-of-constitution", order=2),
-            Topic(subject_id=polity.id, name="Salient Features of the Constitution", slug="salient-features", order=3),
-            Topic(subject_id=polity.id, name="Preamble of the Constitution", slug="preamble", order=4),
-            Topic(subject_id=polity.id, name="Union and its Territory", slug="union-territory", order=5),
-            Topic(subject_id=polity.id, name="Citizenship", slug="citizenship", order=6),
-            Topic(subject_id=polity.id, name="Fundamental Rights", slug="fundamental-rights", order=7),
-            Topic(subject_id=polity.id, name="Directive Principles of State Policy", slug="dpsp", order=8),
-            Topic(subject_id=polity.id, name="Fundamental Duties", slug="fundamental-duties", order=9),
-            Topic(subject_id=polity.id, name="Amendment of the Constitution", slug="amendment", order=10),
-        ]
-        for topic in topics:
-            self._topics[("polity", topic.slug)] = topic
+        # Curriculum storage
+        self._curriculum: dict[str, list[CurriculumNode]] = {}  # subject_code -> nodes
+        self._curriculum_nodes: dict[str, CurriculumNode] = {}  # node_id -> node
+        self._curriculum_progress: dict[tuple[UUID, str], CurriculumProgress] = {}  # (user_id, node_id) -> progress
 
     async def get_progress(self, user_id: UUID, topic_id: UUID) -> Progress | None:
         return self._progress.get((user_id, topic_id))
@@ -126,6 +112,81 @@ class InMemoryStructuredMemoryStore:
                 
         # If all topics are 100% complete, return the last one
         return (topics[-1] if topics else None), (self._progress.get((user_id, topics[-1].id)) if topics else None)
+
+    # ---- Curriculum Methods ----
+
+    async def store_curriculum(self, subject_code: str, nodes: list[CurriculumNode]) -> None:
+        self._curriculum[subject_code] = list(nodes)
+        for node in nodes:
+            self._curriculum_nodes[node.id] = node
+        # Also sync leaf nodes as Topics for backward compatibility
+        self._topics = {
+            k: v for k, v in self._topics.items()
+            if k[0] != subject_code
+        }
+        polity_subject = Subject(code=subject_code, name="Indian Polity")
+        leaf_nodes = [n for n in nodes if not n.child_ids]
+        for idx, node in enumerate(sorted(leaf_nodes, key=lambda n: n.learning_order)):
+            slug = node.id  # use node id as slug for uniqueness
+            topic = Topic(
+                subject_id=polity_subject.id,
+                name=node.title,
+                slug=slug,
+                order=idx + 1,
+            )
+            self._topics[(subject_code, slug)] = topic
+
+    async def get_curriculum(self, subject_code: str) -> list[CurriculumNode]:
+        return list(self._curriculum.get(subject_code, []))
+
+    async def get_curriculum_node(self, node_id: str) -> CurriculumNode | None:
+        return self._curriculum_nodes.get(node_id)
+
+    async def get_leaf_nodes(self, subject_code: str) -> list[CurriculumNode]:
+        nodes = self._curriculum.get(subject_code, [])
+        return sorted(
+            [n for n in nodes if not n.child_ids],
+            key=lambda n: n.learning_order,
+        )
+
+    async def get_curriculum_progress(
+        self, user_id: UUID, subject_code: str,
+    ) -> list[CurriculumProgress]:
+        return [
+            p for (uid, _nid), p in self._curriculum_progress.items()
+            if uid == user_id
+            and self._curriculum_nodes.get(_nid) is not None
+            and self._curriculum_nodes[_nid].subject_code == subject_code
+        ]
+
+    async def upsert_curriculum_progress(
+        self, user_id: UUID, node_id: str, status: NodeStatus,
+        started_at: datetime | None = None, completed_at: datetime | None = None,
+    ) -> CurriculumProgress:
+        progress = CurriculumProgress(
+            user_id=user_id,
+            node_id=node_id,
+            status=status,
+            started_at=started_at,
+            completed_at=completed_at,
+        )
+        self._curriculum_progress[(user_id, node_id)] = progress
+        return progress
+
+    async def get_current_curriculum_position(
+        self, user_id: UUID, subject_code: str,
+    ) -> tuple[CurriculumNode | None, CurriculumProgress | None]:
+        """Find the first leaf node the user hasn't completed yet."""
+        leaf_nodes = await self.get_leaf_nodes(subject_code)
+        for node in leaf_nodes:
+            prog = self._curriculum_progress.get((user_id, node.id))
+            if prog is None or prog.status != NodeStatus.COMPLETED:
+                return node, prog
+        # All complete — return last node
+        if leaf_nodes:
+            last = leaf_nodes[-1]
+            return last, self._curriculum_progress.get((user_id, last.id))
+        return None, None
 
 
 class InMemorySemanticMemoryStore:
