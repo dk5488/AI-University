@@ -67,6 +67,7 @@ def get_learning_service(
 def get_chat_service(
     memory_service: MemoryService = Depends(get_memory_service),
     retrieval_service: RetrievalService = Depends(get_retrieval_service),
+    curriculum_service: CurriculumService = Depends(get_curriculum_service),
     quiz_service: QuizService = Depends(get_quiz_service),
 ) -> ChatService:
     settings = get_settings()
@@ -83,5 +84,6 @@ def get_chat_service(
     return ChatService(
         master_agent=master_agent,
         polity_agent=polity_agent,
+        curriculum_service=curriculum_service,
         quiz_service=quiz_service,
     )
