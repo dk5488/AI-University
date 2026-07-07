@@ -1,15 +1,14 @@
 """Standalone script to generate the polity curriculum and cache it as JSON.
 
 Usage:
-    python scripts/generate_curriculum.py [--model google/gemini-2.5-pro]
+    python scripts/generate_curriculum.py [--model gemini-2.5-pro]
 
-Reads OPENROUTER_API_KEY from .env and writes data/curriculum_polity.json.
+Reads GEMINI_API_KEY from .env and writes data/curriculum_polity.json.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import os
 import sys
 import time
@@ -27,9 +26,9 @@ from app.memory.in_memory import create_in_memory_memory_service
 
 
 async def main(model: str) -> None:
-    api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key:
-        print("ERROR: OPENROUTER_API_KEY not set in .env")
+        print("ERROR: GEMINI_API_KEY not set in .env")
         sys.exit(1)
 
     print(f"Using model: {model}")
@@ -42,23 +41,23 @@ async def main(model: str) -> None:
         api_key=api_key,
     )
 
-    print("Generating curriculum for 'polity'... (this may take 1-3 minutes)")
+    print("Generating curriculum for 'polity' in bounded batches... (this may take several minutes)")
     start = time.perf_counter()
 
     try:
         nodes = await service.ensure_curriculum("polity")
         elapsed = time.perf_counter() - start
-        print(f"\n✅ SUCCESS! Generated {len(nodes)} nodes in {elapsed:.1f}s")
+        print(f"\nSUCCESS! Generated {len(nodes)} nodes in {elapsed:.1f}s")
 
         # Verify the cache file was written
         cache_file = PROJECT_ROOT / "data" / "curriculum_polity.json"
         if cache_file.exists():
             size_kb = cache_file.stat().st_size / 1024
-            print(f"📄 Cached to: {cache_file} ({size_kb:.1f} KB)")
+            print(f"Cached to: {cache_file} ({size_kb:.1f} KB)")
         else:
-            print("⚠️  Cache file was not written — saving manually...")
+            print("Cache file was not written; saving manually...")
             service._save_to_file("polity", nodes)
-            print(f"📄 Saved to: {cache_file}")
+            print(f"Saved to: {cache_file}")
 
         # Print a summary of top-level nodes
         root_nodes = [n for n in nodes if n.parent_id is None]
@@ -69,7 +68,7 @@ async def main(model: str) -> None:
 
     except Exception as e:
         elapsed = time.perf_counter() - start
-        print(f"\n❌ FAILED after {elapsed:.1f}s: {e}")
+        print(f"\nFAILED after {elapsed:.1f}s: {e}")
         sys.exit(1)
 
 
@@ -77,8 +76,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate curriculum")
     parser.add_argument(
         "--model",
-        default="google/gemini-2.5-pro",
-        help="Model to use (default: google/gemini-2.5-pro)",
+        default="gemini-2.5-flash",
+        help="Model to use (default: gemini-2.5-flash)",
     )
     args = parser.parse_args()
     asyncio.run(main(args.model))

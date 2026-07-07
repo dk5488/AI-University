@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
+from collections import defaultdict
+from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -12,7 +14,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field
 
-from app.domain.curriculum import CurriculumLevel, CurriculumNode, CurriculumProgress, NodeStatus
+from app.domain.curriculum import CurriculumLevel, CurriculumNode, NodeStatus
 from app.memory.contracts import MemoryService
 
 logger = logging.getLogger(__name__)
@@ -335,12 +337,18 @@ Do not include examples.
 
 The response must consist exclusively of the complete teaching structure for Indian Polity & Constitution, optimized for UPSC preparation and ready for direct storage in a database."""
 
+CURRICULUM_BATCH_PROMPT = """The curriculum is too large to generate safely in one response.
+
+You will generate one bounded batch at a time. Keep every batch internally complete, compact, and JSON-only.
+Use stable IDs, parent_id links, and child_nodes where you know direct children in the current batch.
+Learning order may be local to the batch; the application will normalize global order after all batches finish."""
+
 
 class CurriculumService:
     def __init__(
         self,
         memory_service: MemoryService,
-        model: str = "gemini-2.5-pro",
+        model: str = "gemini-2.5-flash",
         api_key: str | None = None,
     ) -> None:
         self._memory_service = memory_service
@@ -407,6 +415,123 @@ class CurriculumService:
 
         return [build_tree(r) for r in sorted(root_nodes, key=lambda x: x.learning_order)]
 
+    async def get_next_learning_items(
+        self,
+        user_id: UUID,
+        subject_code: str,
+        count: int = 3,
+    ) -> list[dict[str, Any]]:
+        """Return the current unfinished leaf and the next leaf nodes in learning order."""
+        if count <= 0:
+            raise ValueError("count must be positive")
+
+        await self.ensure_curriculum(subject_code)
+        leaf_nodes = await self._memory_service.get_leaf_nodes(subject_code)
+        progress_list = await self._memory_service.get_curriculum_progress(user_id, subject_code)
+        progress_by_node = {p.node_id: p for p in progress_list}
+
+        start_index = 0
+        for index, node in enumerate(leaf_nodes):
+            progress = progress_by_node.get(node.id)
+            if progress is None or progress.status != NodeStatus.COMPLETED:
+                start_index = index
+                break
+        else:
+            start_index = max(len(leaf_nodes) - 1, 0)
+
+        return [
+            {
+                "node_id": node.id,
+                "title": node.title,
+                "level": node.level,
+                "learning_order": node.learning_order,
+                "status": progress_by_node.get(node.id).status
+                if progress_by_node.get(node.id)
+                else NodeStatus.NOT_STARTED,
+            }
+            for node in leaf_nodes[start_index : start_index + count]
+        ]
+
+    async def get_current_module_tree(
+        self,
+        user_id: UUID,
+        subject_code: str,
+    ) -> dict[str, Any] | None:
+        """Return the smallest useful tree around the user's current module."""
+        nodes = await self.ensure_curriculum(subject_code)
+        current_node, _progress = await self._memory_service.get_current_curriculum_position(
+            user_id,
+            subject_code,
+        )
+        if current_node is None:
+            return None
+
+        node_map = {node.id: node for node in nodes}
+        module = current_node
+        while module.parent_id and module.level != CurriculumLevel.MODULE:
+            module = node_map.get(module.parent_id, module)
+            if module.id == module.parent_id:
+                break
+
+        child_map: dict[str | None, list[CurriculumNode]] = defaultdict(list)
+        for node in nodes:
+            child_map[node.parent_id].append(node)
+        for siblings in child_map.values():
+            siblings.sort(key=lambda item: item.learning_order)
+
+        def build_tree(node: CurriculumNode) -> dict[str, Any]:
+            return {
+                "id": node.id,
+                "level": node.level,
+                "title": node.title,
+                "learning_order": node.learning_order,
+                "children": [build_tree(child) for child in child_map.get(node.id, [])],
+            }
+
+        return build_tree(module)
+
+    async def complete_current_learning_item(
+        self,
+        user_id: UUID,
+        subject_code: str,
+    ) -> dict[str, Any]:
+        """Mark the current unfinished leaf as completed and return the next position."""
+        await self.ensure_curriculum(subject_code)
+        current_node, current_progress = await self._memory_service.get_current_curriculum_position(
+            user_id,
+            subject_code,
+        )
+        if current_node is None:
+            return {"completed": None, "next": None}
+
+        started_at = current_progress.started_at if current_progress else datetime.now(UTC)
+        completed = await self._memory_service.upsert_curriculum_progress(
+            user_id,
+            current_node.id,
+            NodeStatus.COMPLETED,
+            started_at=started_at,
+            completed_at=datetime.now(UTC),
+        )
+        next_node, next_progress = await self._memory_service.get_current_curriculum_position(
+            user_id,
+            subject_code,
+        )
+        return {
+            "completed": {
+                "node_id": current_node.id,
+                "title": current_node.title,
+                "status": completed.status,
+            },
+            "next": {
+                "node_id": next_node.id,
+                "title": next_node.title,
+                "level": next_node.level,
+                "status": next_progress.status if next_progress else NodeStatus.NOT_STARTED,
+            }
+            if next_node
+            else None,
+        }
+
     async def get_user_progress_summary(
         self, user_id: UUID, subject_code: str,
     ) -> dict[str, Any]:
@@ -418,7 +543,6 @@ class CurriculumService:
             user_id, subject_code,
         )
 
-        completed = [p for p in progress_list if p.status == NodeStatus.COMPLETED]
         in_progress = [p for p in progress_list if p.status == NodeStatus.IN_PROGRESS]
 
         total_leaf = len(leaf_nodes)
@@ -462,30 +586,158 @@ class CurriculumService:
     # ---- Private methods ----
 
     async def _generate_curriculum(self, subject_code: str) -> list[CurriculumNode]:
-        """Call the LLM to generate the curriculum."""
+        """Generate the curriculum in bounded batches and stitch the tree together."""
         start_time = time.perf_counter()
 
-        messages = [
-            SystemMessage(content=CURRICULUM_GENERATION_PROMPT),
-            HumanMessage(content=(
-                "Generate the complete hierarchical teaching structure for Indian Polity & Constitution. "
-                "Return ONLY the JSON structure with a 'nodes' array."
-            )),
-        ]
-
         try:
-            result: LLMCurriculumResponse = await self._structured_llm.ainvoke(messages)
+            all_llm_nodes = self._load_partial_generation(subject_code)
+            if all_llm_nodes:
+                logger.info(
+                    "curriculum_partial_loaded subject=%s node_count=%d",
+                    subject_code,
+                    len(all_llm_nodes),
+                )
+            else:
+                outline = await self._generate_outline_batch(subject_code)
+                all_llm_nodes = list(outline)
+                self._save_partial_generation(subject_code, all_llm_nodes)
+
+            outline = [
+                node for node in all_llm_nodes
+                if node.level.lower() in {
+                    CurriculumLevel.PREPARATION.value,
+                    CurriculumLevel.PHASE.value,
+                    CurriculumLevel.MODULE.value,
+                }
+            ]
+            module_nodes = [
+                node for node in outline
+                if node.level.lower() == CurriculumLevel.MODULE.value
+            ]
+            completed_module_ids = {
+                node.parent_id for node in all_llm_nodes
+                if node.parent_id in {module.id for module in module_nodes}
+            }
+
+            logger.info(
+                "curriculum_batch_outline_complete subject=%s module_count=%d node_count=%d",
+                subject_code,
+                len(module_nodes),
+                len(outline),
+            )
+
+            for module in sorted(module_nodes, key=lambda node: node.learning_order):
+                if module.id in completed_module_ids:
+                    logger.info(
+                        "curriculum_batch_module_skip_completed subject=%s module=%s",
+                        subject_code,
+                        module.id,
+                    )
+                    continue
+
+                descendant_nodes = await self._generate_module_descendant_batch(
+                    subject_code,
+                    module,
+                )
+                all_llm_nodes.extend(descendant_nodes)
+                self._save_partial_generation(subject_code, all_llm_nodes)
+                logger.info(
+                    "curriculum_batch_module_descendants_complete subject=%s module=%s node_count=%d",
+                    subject_code,
+                    module.id,
+                    len(descendant_nodes),
+                )
+
+            nodes = self._parse_llm_nodes(subject_code, all_llm_nodes)
+            nodes = self._normalize_generated_nodes(nodes)
+            self._clear_partial_generation(subject_code)
             duration = (time.perf_counter() - start_time) * 1000
             logger.info(
                 "curriculum_llm_complete subject=%s node_count=%d duration_ms=%.2f",
-                subject_code, len(result.nodes), duration,
+                subject_code, len(nodes), duration,
             )
+            return nodes
         except Exception:
             logger.exception("curriculum_llm_failed subject=%s", subject_code)
             raise
 
-        # Convert LLM output to domain objects
-        return self._parse_llm_nodes(subject_code, result.nodes)
+    async def _generate_outline_batch(self, subject_code: str) -> list[LLMCurriculumNode]:
+        messages = [
+            SystemMessage(content=f"{CURRICULUM_GENERATION_PROMPT}\n\n{CURRICULUM_BATCH_PROMPT}"),
+            HumanMessage(content=(
+                f"Subject code: {subject_code}.\n"
+                "Batch 1: Generate only the top curriculum outline: preparation, phase, and module nodes. "
+                "Do not generate unit, chapter, topic, or concept nodes in this batch. "
+                "Every module should be a compact UPSC Polity batch that can be expanded later. "
+                "Return only JSON with a nodes array."
+            )),
+        ]
+        return await self._invoke_curriculum_batch("outline", subject_code, messages)
+
+    async def _generate_module_descendant_batch(
+        self,
+        subject_code: str,
+        module: LLMCurriculumNode,
+    ) -> list[LLMCurriculumNode]:
+        messages = [
+            SystemMessage(content=f"{CURRICULUM_GENERATION_PROMPT}\n\n{CURRICULUM_BATCH_PROMPT}"),
+            HumanMessage(content=(
+                f"Subject code: {subject_code}.\n"
+                "Expand this single module into all descendants needed for this module only.\n"
+                f"Module to expand:\n{module.model_dump_json()}\n\n"
+                "Return unit, chapter, topic, and concept nodes under this module. "
+                "Do not include preparation, phase, or the module node itself. "
+                "Keep the module complete but compact enough for one structured response. "
+                "Optimize for minimum cognitive load and UPSC Prelims + Mains throughput."
+            )),
+        ]
+        return await self._invoke_curriculum_batch(
+            f"module-descendants:{module.id}",
+            subject_code,
+            messages,
+        )
+
+    async def _generate_unit_descendant_batch(
+        self,
+        subject_code: str,
+        module: LLMCurriculumNode,
+        unit: LLMCurriculumNode,
+    ) -> list[LLMCurriculumNode]:
+        messages = [
+            SystemMessage(content=f"{CURRICULUM_GENERATION_PROMPT}\n\n{CURRICULUM_BATCH_PROMPT}"),
+            HumanMessage(content=(
+                f"Subject code: {subject_code}.\n"
+                "Expand this single unit into chapter, topic, and concept descendants only.\n"
+                f"Parent module:\n{module.model_dump_json()}\n\n"
+                f"Unit to expand:\n{unit.model_dump_json()}\n\n"
+                "Return only descendants under this unit. "
+                "Do not include preparation, phase, module, or the unit node itself. "
+                "Keep the batch complete for this unit and optimized for UPSC Prelims + Mains."
+            )),
+        ]
+        return await self._invoke_curriculum_batch(
+            f"unit-descendants:{unit.id}",
+            subject_code,
+            messages,
+        )
+
+    async def _invoke_curriculum_batch(
+        self,
+        batch_name: str,
+        subject_code: str,
+        messages: list[SystemMessage | HumanMessage],
+    ) -> list[LLMCurriculumNode]:
+        start_time = time.perf_counter()
+        logger.info("curriculum_batch_start subject=%s batch=%s", subject_code, batch_name)
+        result: LLMCurriculumResponse = await self._structured_llm.ainvoke(messages)
+        logger.info(
+            "curriculum_batch_complete subject=%s batch=%s node_count=%d duration_ms=%.2f",
+            subject_code,
+            batch_name,
+            len(result.nodes),
+            (time.perf_counter() - start_time) * 1000,
+        )
+        return result.nodes
 
     def _parse_llm_nodes(
         self, subject_code: str, llm_nodes: list[LLMCurriculumNode],
@@ -517,6 +769,96 @@ class CurriculumService:
             ))
 
         return nodes
+
+    def _normalize_generated_nodes(self, nodes: list[CurriculumNode]) -> list[CurriculumNode]:
+        """Dedupe nodes, recompute child links, and assign stable DFS learning order."""
+        deduped: dict[str, CurriculumNode] = {}
+        first_index: dict[str, int] = {}
+        for index, node in enumerate(nodes):
+            if node.id not in deduped:
+                deduped[node.id] = node
+                first_index[node.id] = index
+
+        child_map: dict[str | None, list[CurriculumNode]] = defaultdict(list)
+        for node in deduped.values():
+            parent_id = node.parent_id if node.parent_id in deduped and node.parent_id != node.id else None
+            child_map[parent_id].append(replace(node, parent_id=parent_id))
+
+        for siblings in child_map.values():
+            siblings.sort(key=lambda item: (item.learning_order, first_index[item.id]))
+
+        ordered: list[CurriculumNode] = []
+        visited: set[str] = set()
+
+        def walk(node: CurriculumNode) -> None:
+            if node.id in visited:
+                return
+            visited.add(node.id)
+            children = child_map.get(node.id, [])
+            ordered.append(replace(
+                node,
+                learning_order=len(ordered) + 1,
+                child_ids=tuple(child.id for child in children),
+            ))
+            for child in children:
+                walk(child)
+
+        roots = child_map.get(None, [])
+        for root in roots:
+            walk(root)
+        for node in sorted(deduped.values(), key=lambda item: first_index[item.id]):
+            walk(node)
+
+        return ordered
+
+    def _partial_generation_path(self, subject_code: str) -> Path:
+        return DATA_DIR / f"curriculum_{subject_code}.partial.json"
+
+    def _save_partial_generation(
+        self,
+        subject_code: str,
+        nodes: list[LLMCurriculumNode],
+    ) -> None:
+        try:
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            file_path = self._partial_generation_path(subject_code)
+            data = [node.model_dump() for node in nodes]
+            file_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            logger.info(
+                "curriculum_partial_saved path=%s node_count=%d",
+                file_path,
+                len(nodes),
+            )
+        except Exception:
+            logger.exception("curriculum_partial_save_failed subject=%s", subject_code)
+
+    def _load_partial_generation(self, subject_code: str) -> list[LLMCurriculumNode]:
+        file_path = self._partial_generation_path(subject_code)
+        if not file_path.exists():
+            return []
+
+        try:
+            data = json.loads(file_path.read_text(encoding="utf-8"))
+            nodes = [LLMCurriculumNode(**item) for item in data]
+            logger.info(
+                "curriculum_partial_loaded path=%s node_count=%d",
+                file_path,
+                len(nodes),
+            )
+            return nodes
+        except Exception:
+            logger.exception("curriculum_partial_load_failed path=%s", file_path)
+            return []
+
+    def _clear_partial_generation(self, subject_code: str) -> None:
+        file_path = self._partial_generation_path(subject_code)
+        if not file_path.exists():
+            return
+        try:
+            file_path.unlink()
+            logger.info("curriculum_partial_cleared path=%s", file_path)
+        except Exception:
+            logger.exception("curriculum_partial_clear_failed path=%s", file_path)
 
     def _save_to_file(self, subject_code: str, nodes: list[CurriculumNode]) -> None:
         """Cache curriculum to a JSON file."""
