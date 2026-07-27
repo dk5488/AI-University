@@ -12,6 +12,7 @@ class Intent(StrEnum):
     REVISE = "revise"
     EXPLAIN = "explain"
     COMPARE = "compare"
+    FOLLOW_UP = "follow_up"
     UNKNOWN = "unknown"
 
 

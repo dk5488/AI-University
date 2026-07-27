@@ -14,7 +14,7 @@ class UnusedMasterAgent:
 
 
 class FakePolityAgent:
-    async def teach(self, user_id, topic, message=None):
+    async def teach(self, user_id, topic, message=None, conversation_history=None, current_topic_context=None):
         return {
             "answer": f"Teaching {topic}: {message}",
             "subject": "Polity",

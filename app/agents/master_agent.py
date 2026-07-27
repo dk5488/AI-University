@@ -28,6 +28,7 @@ class AgentState(TypedDict):
     route: RouteSchema | None
     user_id: UUID | None
     session_id: str | None
+    current_topic: str
 
 
 class MasterAgent:
@@ -60,17 +61,36 @@ class MasterAgent:
         return builder.compile()
 
     async def _classify_intent(self, state: AgentState) -> dict[str, object]:
+        current_topic = state.get("current_topic") or ""
+        topic_hint = (
+            f"\n\nIMPORTANT CONTEXT: The user is currently studying this Polity topic: '{current_topic}'. "
+            "Any question that relates to concepts mentioned in this topic MUST be routed to Polity, "
+            "not to History or any other subject. For example, if the user is learning about "
+            "'Background to British Rule' in Polity, then questions about 'East India Company', "
+            "'Battle of Plassey', 'Diwani rights', 'British Parliament acts' etc. are all Polity questions."
+        ) if current_topic else ""
+
         system_prompt = (
             "You are the Master Agent of AI University, an UPSC coaching institute. "
             "Your job is to route user requests to the correct subject expert and intent. "
             "Subjects: Polity, History, Economy, Current Affairs. "
             "Intents: Teach (learning/explaining), GenerateMCQ (creating quizzes), "
             "EvaluateMCQ (checking answers), Revise (spaced repetition), "
-            "Explain (deep dive), Compare (cross-topic comparison). "
-            "If the request is ambiguous, use Unknown for subject/intent. "
-            "CRITICAL: If the user asks generic learning questions like 'start teaching me', "
-            "'what is the next module', 'where am I', or 'teach me next', set the intent to Teach "
-            "and the topic to 'auto'. This signals the subject agent to look up their progress."
+            "Explain (deep dive), Compare (cross-topic comparison), FollowUp (clarification). "
+            "If the request is ambiguous, default to Polity with Explain intent — do NOT use Unknown. "
+            "CRITICAL ROUTING RULES:\n"
+            "1. If the user asks generic learning questions like 'start teaching me', "
+            "'what is the next module', 'where am I', or 'teach me next', set intent=Teach, topic='auto'.\n"
+            "2. If the user asks about a concept that is part of the Indian Polity syllabus "
+            "(constitutional history, British acts, governance, fundamental rights, etc.), "
+            "ALWAYS route to Polity even if it sounds like History.\n"
+            "3. If the user asks a follow-up question (e.g., 'explain more', 'I didn't understand', "
+            "'what does that mean', 'tell me more', 'give an example', 'understad', minor typos are fine), "
+            "set intent=FollowUp and topic='auto'.\n"
+            "4. Indian Polity includes constitutional history (East India Company, Regulating Act, "
+            "Charter Acts, etc.) — these are Polity, NOT History.\n"
+            "5. Only route to Unknown as an absolute last resort."
+            f"{topic_hint}"
         )
         
         messages = [SystemMessage(content=system_prompt)] + state["messages"]
@@ -108,19 +128,22 @@ class MasterAgent:
         message: str,
         user_id: UUID | None = None,
         session_id: str | None = None,
+        current_topic: str | None = None,
     ) -> RoutedCommand:
         start_time = time.perf_counter()
         logger.info(
-            "master_agent_route_start user_id=%s session_id=%s message_length=%s",
+            "master_agent_route_start user_id=%s session_id=%s message_length=%s current_topic=%s",
             user_id,
             session_id,
             len(message),
+            current_topic,
         )
         state: AgentState = {
             "messages": [HumanMessage(content=message)],
             "route": None,
             "user_id": user_id,
             "session_id": session_id,
+            "current_topic": current_topic or "",
         }
         
         result = await self._graph.ainvoke(state)

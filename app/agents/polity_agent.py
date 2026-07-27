@@ -81,6 +81,8 @@ class PolityAgent:
         user_id: UUID,
         topic: str,
         message: str | None = None,
+        conversation_history: list[dict[str, str]] | None = None,
+        current_topic_context: str | None = None,
     ) -> dict[str, Any]:
         logger.info("polity_teach_start provider=gemini user_id=%s topic=%s message_length=%s", user_id, topic, len(message or ""))
         start_time = time.perf_counter()
@@ -98,10 +100,10 @@ class PolityAgent:
                 status = current_progress.status if current_progress else NodeStatus.NOT_STARTED
                 if topic.lower() == "status":
                     status_message = f"You are currently on **{resolved_topic}** ({status}). "
-                elif status == NodeStatus.IN_PROGRESS:
-                    status_message = f"You haven't finished **{resolved_topic}** yet. Let's complete this before moving forward. "
-                else:
+                elif status == NodeStatus.NOT_STARTED:
                     status_message = f"Starting the next optimized syllabus item: **{resolved_topic}**. "
+                # For IN_PROGRESS — no blocking message; let the LLM continue
+                # naturally from conversation history
             else:
                 current_topic, progress = await self._memory_service.get_current_topic(user_id, "polity")
                 if current_topic:
@@ -160,11 +162,21 @@ class PolityAgent:
         )
         user_message = message or f"Teach me about {resolved_topic}."
 
-        # 4. Generate Answer
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_message),
-        ]
+        # 4. Generate Answer — include conversation history for context
+        messages = [SystemMessage(content=system_prompt)]
+
+        # Inject recent conversation history so the LLM remembers what it taught
+        if conversation_history:
+            for entry in conversation_history[-10:]:  # last 10 messages
+                role = entry.get("role", "user")
+                content = entry.get("content", "")
+                if role == "assistant":
+                    from langchain_core.messages import AIMessage
+                    messages.append(AIMessage(content=content))
+                else:
+                    messages.append(HumanMessage(content=content))
+
+        messages.append(HumanMessage(content=user_message))
         
         try:
             logger.info("polity_teach_llm_start provider=gemini user_id=%s topic=%s model=%s", user_id, resolved_topic, self._model)
@@ -515,14 +527,22 @@ class PolityAgent:
             "INSTRUCTIONS & SCIENTIFIC LEARNING METHODS:\n"
             "1. Ground your answer strictly in the knowledge base sources listed above.\n"
             "2. Always cite the specific book and chapter (e.g., 'As per Laxmikanth, Chapter 3...').\n"
-            "3. Teach only the current optimized syllabus item unless the user explicitly asks for a prerequisite or comparison.\n"
+            "3. Teach the current optimized syllabus item. If the user asks about a concept that was "
+            "mentioned in your lesson (e.g., East India Company, Battle of Plassey, British Parliament), "
+            "answer it in the context of Polity. These are NOT off-topic — they are part of the Polity syllabus.\n"
             "4. Minimize effort and maximize UPSC throughput: explain the smallest useful concept, its exam relevance, and the exact recall hooks.\n"
             "5. Chunking: Break complex topics into small, digestible chunks. Do not output a massive wall of text.\n"
-            "4. Active Recall: At the end of your explanation, provide 2-3 quick 'Active Recall' questions to test the user's immediate understanding.\n"
-            "6. If the user asks a doubt or follow-up, answer it directly first, then reconnect it to the current syllabus item.\n"
-            "7. If the user has weak areas, try to clarify those points if relevant.\n"
-            "8. Use UPSC-style analysis (importance, constitutional provisions, articles, amendments, implications).\n"
-            "9. Structure your response with clear headings, bullet points, and constitutional references."
+            "6. Active Recall: At the end of your explanation, provide 2-3 quick 'Active Recall' questions to test the user's immediate understanding.\n"
+            "7. If the user asks a doubt or follow-up, answer it directly first, then reconnect it to the current syllabus item. "
+            "NEVER say you cannot answer a question about something you just taught.\n"
+            "8. If the user says they didn't understand something, re-explain it differently using simpler language, analogies, or a different angle. "
+            "Do NOT repeat the exact same explanation.\n"
+            "9. If the user asks for more detail, go deeper into the concept. Do NOT re-teach from scratch.\n"
+            "10. If the user has weak areas, try to clarify those points if relevant.\n"
+            "11. Use UPSC-style analysis (importance, constitutional provisions, articles, amendments, implications).\n"
+            "12. Structure your response with clear headings, bullet points, and constitutional references.\n"
+            "13. You have conversation history available. Use it to avoid repeating what you already taught. "
+            "Build on previous explanations rather than starting over."
         )
 
     def _format_curriculum_prompt_context(self, curriculum_context: dict[str, Any]) -> str:
