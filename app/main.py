@@ -12,6 +12,7 @@ from app.core.errors import AppError, DomainError
 from app.memory.in_memory import create_in_memory_memory_service
 from app.rag.retrieval import RetrievalService
 from app.rag.embeddings import GeminiEmbeddingClient
+from app.rag.rag_pipeline_client import RagPipelineClient
 from app.infrastructure.vector.qdrant_client import QdrantVectorStore
 from app.application.curriculum_service import CurriculumService
 
@@ -107,6 +108,12 @@ def create_app() -> FastAPI:
         vector_store=vector_store,
     )
     logger.info("retrieval_service_initialized embedding_model=%s", settings.gemini_embedding_model)
+
+    # Initialize RAG Pipeline Client (calls RAG Pipeline HTTP API for teaching queries)
+    application.state.rag_pipeline_client = RagPipelineClient(
+        base_url=settings.rag_pipeline_url,
+    )
+    logger.info("rag_pipeline_client_initialized url=%s", settings.rag_pipeline_url)
 
     # Initialize Curriculum Service
     curriculum_service = CurriculumService(

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from app.domain.curriculum import CurriculumNode, NodeStatus
 from app.memory.contracts import MemoryService, SemanticObservation
 from app.rag.retrieval import RetrievalService
+from app.rag.rag_pipeline_client import RagPipelineClient
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +37,11 @@ class PolityAgent:
         retrieval_service: RetrievalService,
         model: str = "gemini-2.5-flash",
         api_key: str | None = None,
+        rag_pipeline_client: RagPipelineClient | None = None,
     ) -> None:
         self._memory_service = memory_service
         self._retrieval_service = retrieval_service
+        self._rag_pipeline_client = rag_pipeline_client
         self._model = model
         kwargs: dict[str, object] = {
             "model": model,
@@ -51,7 +54,10 @@ class PolityAgent:
         self._llm = ChatGoogleGenerativeAI(**kwargs)
 
         self._quiz_llm = self._llm.with_structured_output(QuizSchema)
-        logger.info("polity_agent_initialized provider=gemini model=%s api_key_configured=%s", model, bool(api_key))
+        logger.info(
+            "polity_agent_initialized provider=gemini model=%s api_key_configured=%s rag_pipeline=%s",
+            model, bool(api_key), bool(rag_pipeline_client),
+        )
 
     # Authoritative knowledge base references — these books are well-known
     # to the LLM, so we instruct it to draw from them by name rather than
@@ -134,31 +140,45 @@ class PolityAgent:
             len(context.weak_topics),
         )
 
-        # 2. Attempt RAG retrieval (optional enhancement — works without it)
+        # 2. Retrieve context from RAG Pipeline (teaching/explanation queries only)
+        rag_context = ""
         rag_chunks = []
-        try:
-            logger.info("polity_teach_retrieval_start user_id=%s topic=%s limit=3", user_id, resolved_topic)
-            retrieval_response = await self._retrieval_service.retrieve(
-                query=resolved_topic,
-                subject="Polity",
-                limit=3,
-            )
-            rag_chunks = retrieval_response.chunks
-            logger.info(
-                "polity_teach_retrieval_complete user_id=%s topic=%s chunk_count=%s",
-                user_id,
-                resolved_topic,
-                len(rag_chunks),
-            )
-        except Exception:
-            logger.warning("polity_teach_retrieval_skipped user_id=%s topic=%s reason=retrieval_failed", user_id, resolved_topic)
+        if self._rag_pipeline_client:
+            # Use the RAG Pipeline HTTP API — it handles embedding + Qdrant search
+            search_query = message or resolved_topic
+            logger.info("polity_teach_rag_pipeline_start user_id=%s query_length=%s", user_id, len(search_query))
+            rag_context = await self._rag_pipeline_client.search(search_query)
+            if rag_context:
+                logger.info(
+                    "polity_teach_rag_pipeline_complete user_id=%s result_length=%s",
+                    user_id, len(rag_context),
+                )
+            else:
+                logger.warning("polity_teach_rag_pipeline_empty user_id=%s topic=%s", user_id, resolved_topic)
+        else:
+            # Fallback: use the existing Gemini-embedding-based retrieval
+            try:
+                logger.info("polity_teach_retrieval_start user_id=%s topic=%s limit=3", user_id, resolved_topic)
+                retrieval_response = await self._retrieval_service.retrieve(
+                    query=resolved_topic,
+                    subject="Polity",
+                    limit=3,
+                )
+                rag_chunks = retrieval_response.chunks
+                logger.info(
+                    "polity_teach_retrieval_complete user_id=%s topic=%s chunk_count=%s",
+                    user_id, resolved_topic, len(rag_chunks),
+                )
+            except Exception:
+                logger.warning("polity_teach_retrieval_skipped user_id=%s topic=%s reason=retrieval_failed", user_id, resolved_topic)
 
-        # 3. Build Prompt (knowledge-base-aware, with optional RAG enrichment)
+        # 3. Build Prompt (knowledge-base-aware, with RAG context)
         system_prompt = self._build_teaching_system_prompt(
             context,
             rag_chunks,
             current_topic_name=resolved_topic,
             curriculum_context=curriculum_context,
+            rag_pipeline_context=rag_context,
         )
         user_message = message or f"Teach me about {resolved_topic}."
 
@@ -493,6 +513,7 @@ class PolityAgent:
         chunks: list[Any],
         current_topic_name: str | None = None,
         curriculum_context: dict[str, Any] | None = None,
+        rag_pipeline_context: str = "",
     ) -> str:
         # Context summary
         progress_info = "New topic for the user."
@@ -504,9 +525,14 @@ class PolityAgent:
         
         weak_areas = ", ".join(context.weak_topics) if context.weak_topics else "None identified yet."
         
-        # Optional RAG-enriched source chunks
+        # RAG context — prefer RAG Pipeline results, fall back to old retrieval chunks
         rag_section = ""
-        if chunks:
+        if rag_pipeline_context:
+            rag_section = (
+                "\n\nRETRIEVED SOURCE MATERIAL FROM KNOWLEDGE BASE:\n"
+                f"{rag_pipeline_context}"
+            )
+        elif chunks:
             sources_text = "\n\n".join([
                 f"SOURCE CHUNK (Chapter: {c.chapter}, Page: {c.page_start}):\n{c.content}"
                 for c in chunks
@@ -525,14 +551,21 @@ class PolityAgent:
             f"{curriculum_section}"
             f"{rag_section}\n\n"
             "INSTRUCTIONS & SCIENTIFIC LEARNING METHODS:\n"
-            "1. Ground your answer strictly in the knowledge base sources listed above.\n"
-            "2. Always cite the specific book and chapter (e.g., 'As per Laxmikanth, Chapter 3...').\n"
+            "1. You MUST use the RETRIEVED SOURCE MATERIAL above as the PRIMARY basis for your answer. "
+            "Provide a detailed, long, and extensive explanation grounded in this retrieved content. "
+            "Cite the specific source (filename and page number) from the retrieved material.\n"
+            "2. Supplement with knowledge from the authoritative knowledge base books listed above. "
+            "Always cite the specific book and chapter (e.g., 'As per Laxmikanth, Chapter 3...').\n"
             "3. Teach the current optimized syllabus item. If the user asks about a concept that was "
             "mentioned in your lesson (e.g., East India Company, Battle of Plassey, British Parliament), "
             "answer it in the context of Polity. These are NOT off-topic — they are part of the Polity syllabus.\n"
-            "4. Minimize effort and maximize UPSC throughput: explain the smallest useful concept, its exam relevance, and the exact recall hooks.\n"
-            "5. Chunking: Break complex topics into small, digestible chunks. Do not output a massive wall of text.\n"
-            "6. Active Recall: At the end of your explanation, provide 2-3 quick 'Active Recall' questions to test the user's immediate understanding.\n"
+            "4. Provide DETAILED and EXTENSIVE explanations. Cover the topic thoroughly — include "
+            "constitutional provisions, historical context, amendments, landmark cases, and practical implications. "
+            "Do NOT give short or surface-level answers.\n"
+            "5. Chunking: Break complex topics into well-organized sections with clear headings. "
+            "Use bullet points, numbered lists, and constitutional references for clarity.\n"
+            "6. Active Recall: At the end of your explanation, provide 2-3 quick 'Active Recall' questions "
+            "to test the user's immediate understanding.\n"
             "7. If the user asks a doubt or follow-up, answer it directly first, then reconnect it to the current syllabus item. "
             "NEVER say you cannot answer a question about something you just taught.\n"
             "8. If the user says they didn't understand something, re-explain it differently using simpler language, analogies, or a different angle. "
@@ -540,8 +573,7 @@ class PolityAgent:
             "9. If the user asks for more detail, go deeper into the concept. Do NOT re-teach from scratch.\n"
             "10. If the user has weak areas, try to clarify those points if relevant.\n"
             "11. Use UPSC-style analysis (importance, constitutional provisions, articles, amendments, implications).\n"
-            "12. Structure your response with clear headings, bullet points, and constitutional references.\n"
-            "13. You have conversation history available. Use it to avoid repeating what you already taught. "
+            "12. You have conversation history available. Use it to avoid repeating what you already taught. "
             "Build on previous explanations rather than starting over."
         )
 

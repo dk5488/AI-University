@@ -11,6 +11,7 @@ from app.application.learning_service import LearningService
 from app.core.config import get_settings
 from app.memory.contracts import MemoryService
 from app.rag.retrieval import RetrievalService
+from app.rag.rag_pipeline_client import RagPipelineClient
 
 
 def get_memory_service(request: Request) -> MemoryService:
@@ -19,6 +20,10 @@ def get_memory_service(request: Request) -> MemoryService:
 
 def get_retrieval_service(request: Request) -> RetrievalService:
     return cast(RetrievalService, request.app.state.retrieval_service)
+
+
+def get_rag_pipeline_client(request: Request) -> RagPipelineClient:
+    return cast(RagPipelineClient, request.app.state.rag_pipeline_client)
 
 
 def get_curriculum_service(
@@ -35,6 +40,7 @@ def get_curriculum_service(
 def get_quiz_service(
     memory_service: MemoryService = Depends(get_memory_service),
     retrieval_service: RetrievalService = Depends(get_retrieval_service),
+    rag_pipeline_client: RagPipelineClient = Depends(get_rag_pipeline_client),
 ) -> QuizService:
     settings = get_settings()
     polity_agent = PolityAgent(
@@ -42,6 +48,7 @@ def get_quiz_service(
         retrieval_service=retrieval_service,
         model=settings.gemini_chat_model,
         api_key=settings.gemini_api_key,
+        rag_pipeline_client=rag_pipeline_client,
     )
     revision_service = RevisionService(memory_service)
     return QuizService(
@@ -67,6 +74,7 @@ def get_learning_service(
 def get_chat_service(
     memory_service: MemoryService = Depends(get_memory_service),
     retrieval_service: RetrievalService = Depends(get_retrieval_service),
+    rag_pipeline_client: RagPipelineClient = Depends(get_rag_pipeline_client),
     curriculum_service: CurriculumService = Depends(get_curriculum_service),
     quiz_service: QuizService = Depends(get_quiz_service),
 ) -> ChatService:
@@ -80,6 +88,7 @@ def get_chat_service(
         retrieval_service=retrieval_service,
         model=settings.gemini_chat_model,
         api_key=settings.gemini_api_key,
+        rag_pipeline_client=rag_pipeline_client,
     )
     return ChatService(
         master_agent=master_agent,
