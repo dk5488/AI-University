@@ -34,6 +34,7 @@ class SubjectSummary(BaseModel):
     code: str
     name: str
     topics_count: int
+    current_position: str | None = None
 
 
 class UserDashboardResponse(BaseModel):

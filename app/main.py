@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from fastapi import FastAPI, Request
@@ -12,6 +13,7 @@ from app.memory.in_memory import create_in_memory_memory_service
 from app.rag.retrieval import RetrievalService
 from app.rag.embeddings import GeminiEmbeddingClient
 from app.infrastructure.vector.qdrant_client import QdrantVectorStore
+from app.application.curriculum_service import CurriculumService
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +39,9 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
     )
 
-    # Add Middleware
+    # Add middleware. CORS must wrap request logging so 500 responses still
+    # include browser-visible CORS headers.
+    application.add_middleware(RequestIdMiddleware)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -45,7 +49,6 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    application.add_middleware(RequestIdMiddleware)
 
     # Exception Handlers
     @application.exception_handler(AppError)
@@ -58,6 +61,26 @@ def create_app() -> FastAPI:
                     "message": exc.message,
                     "details": exc.details,
                     "request_id": getattr(request.state, "request_id", None)
+                }
+            },
+        )
+
+    @application.exception_handler(Exception)
+    async def unhandled_error_handler(request: Request, exc: Exception):
+        logger.exception(
+            "unhandled_request_error method=%s path=%s request_id=%s",
+            request.method,
+            request.url.path,
+            getattr(request.state, "request_id", None),
+        )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": {
+                    "code": "internal_server_error",
+                    "message": "Internal server error",
+                    "details": {},
+                    "request_id": getattr(request.state, "request_id", None),
                 }
             },
         )
@@ -83,7 +106,29 @@ def create_app() -> FastAPI:
         embedding_client=embedding_client,
         vector_store=vector_store,
     )
-    logger.info("retrieval_service_initialized embedding_model=text-embedding-3-small")
+    logger.info("retrieval_service_initialized embedding_model=%s", settings.gemini_embedding_model)
+
+    # Initialize Curriculum Service
+    curriculum_service = CurriculumService(
+        memory_service=application.state.memory_service,
+        model=settings.gemini_chat_model,
+        api_key=settings.gemini_api_key,
+    )
+    application.state.curriculum_service = curriculum_service
+    logger.info("curriculum_service_initialized model=%s", settings.gemini_chat_model)
+
+    # Startup event: ensure Polity curriculum is loaded
+    async def load_curriculum_background() -> None:
+        try:
+            nodes = await curriculum_service.ensure_curriculum("polity")
+            logger.info("curriculum_background_complete subject=polity node_count=%d", len(nodes))
+        except Exception:
+            logger.exception("curriculum_background_failed subject=polity will_retry_on_first_request=true")
+
+    @application.on_event("startup")
+    async def load_curriculum():
+        asyncio.create_task(load_curriculum_background())
+        logger.info("curriculum_background_scheduled subject=polity")
     
     application.include_router(api_router, prefix=settings.api_v1_prefix)
 

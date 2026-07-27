@@ -5,6 +5,7 @@ import uuid
 from typing import Any
 
 from fastapi import Request, Response
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ def setup_logging() -> None:
         force=True,
     )
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("openai").setLevel(logging.INFO)
+    logging.getLogger("google").setLevel(logging.INFO)
     logging.getLogger("uvicorn.access").setLevel(logging.INFO)
 
 
@@ -51,7 +52,21 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
                 request.url.path,
                 process_time * 1000,
             )
-            raise
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": {
+                        "code": "internal_server_error",
+                        "message": "Internal server error",
+                        "details": {},
+                        "request_id": request_id,
+                    }
+                },
+                headers={
+                    "X-Request-ID": request_id,
+                    "X-Process-Time": str(process_time),
+                },
+            )
         process_time = time.perf_counter() - start_time
         
         response.headers["X-Request-ID"] = request_id

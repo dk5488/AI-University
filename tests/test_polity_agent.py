@@ -17,6 +17,9 @@ async def test_polity_agent_teach_coordinates_services():
         subject_code="polity",
         topic_slug="fundamental-rights",
     )
+    memory_service.get_curriculum.return_value = []
+    memory_service.get_current_curriculum_position.return_value = (None, None)
+    memory_service.get_curriculum_progress.return_value = []
 
     retrieval_service = AsyncMock()
     retrieval_service.retrieve.return_value = RetrievalResponse(

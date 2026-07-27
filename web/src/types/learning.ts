@@ -18,6 +18,7 @@ export interface SubjectSummary {
   code: string;
   name: string;
   topics_count: number;
+  current_position?: string | null;
 }
 
 export interface UserDashboard {

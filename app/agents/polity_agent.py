@@ -1,6 +1,7 @@
 import logging
 import time
-from datetime import datetime, timezone
+from collections import defaultdict
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -8,6 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field
 
+from app.domain.curriculum import CurriculumNode, NodeStatus
 from app.memory.contracts import MemoryService, SemanticObservation
 from app.rag.retrieval import RetrievalService
 
@@ -41,19 +43,12 @@ class PolityAgent:
         kwargs: dict[str, object] = {
             "model": model,
             "temperature": 0.2,
-            "max_retries": 2,
-            "timeout": 30,
+            "max_retries": 3,
         }
         if api_key:
-            kwargs["api_key"] = api_key
+            kwargs["google_api_key"] = api_key
 
-        try:
-            self._llm = ChatGoogleGenerativeAI(**kwargs)
-        except TypeError:
-            if api_key:
-                kwargs.pop("api_key", None)
-                kwargs["google_api_key"] = api_key
-            self._llm = ChatGoogleGenerativeAI(**kwargs)
+        self._llm = ChatGoogleGenerativeAI(**kwargs)
 
         self._quiz_llm = self._llm.with_structured_output(QuizSchema)
         logger.info("polity_agent_initialized provider=gemini model=%s api_key_configured=%s", model, bool(api_key))
@@ -86,6 +81,8 @@ class PolityAgent:
         user_id: UUID,
         topic: str,
         message: str | None = None,
+        conversation_history: list[dict[str, str]] | None = None,
+        current_topic_context: str | None = None,
     ) -> dict[str, Any]:
         logger.info("polity_teach_start provider=gemini user_id=%s topic=%s message_length=%s", user_id, topic, len(message or ""))
         start_time = time.perf_counter()
@@ -93,19 +90,32 @@ class PolityAgent:
         # 0. Handle Dynamic/Auto Topic Resolution
         resolved_topic = topic
         status_message = ""
+        curriculum_context = await self._get_curriculum_context(user_id, topic)
+        current_node = curriculum_context.get("node")
         if topic.lower() in ("auto", "next", "status"):
-            current_topic, progress = await self._memory_service.get_current_topic(user_id, "polity")
-            if current_topic:
-                resolved_topic = current_topic.name
-                pct = progress.completion_percent if progress else 0
+            current_node = curriculum_context.get("current_node")
+            current_progress = curriculum_context.get("current_progress")
+            if current_node:
+                resolved_topic = current_node.title
+                status = current_progress.status if current_progress else NodeStatus.NOT_STARTED
                 if topic.lower() == "status":
-                    status_message = f"You are currently on **{resolved_topic}** ({pct}% complete). "
-                elif pct > 0 and pct < 100:
-                    status_message = f"You haven't finished **{resolved_topic}** yet ({pct}% complete). Let's complete this before moving forward. "
-                else:
-                    status_message = f"Moving on to the next module: **{resolved_topic}**. "
+                    status_message = f"You are currently on **{resolved_topic}** ({status}). "
+                elif status == NodeStatus.NOT_STARTED:
+                    status_message = f"Starting the next optimized syllabus item: **{resolved_topic}**. "
+                # For IN_PROGRESS — no blocking message; let the LLM continue
+                # naturally from conversation history
             else:
-                resolved_topic = "Historical Background"  # fallback
+                current_topic, progress = await self._memory_service.get_current_topic(user_id, "polity")
+                if current_topic:
+                    resolved_topic = current_topic.name
+                    pct = progress.completion_percent if progress else 0
+                    status_message = f"Using your current topic: **{resolved_topic}** ({pct}% complete). "
+                else:
+                    resolved_topic = "Historical Background"  # fallback
+
+        curriculum_context = await self._get_curriculum_context(user_id, resolved_topic)
+        current_node = curriculum_context.get("node") or curriculum_context.get("current_node")
+        await self._mark_curriculum_item_started(user_id, current_node)
         
         topic_slug = resolved_topic.lower().replace(" ", "-")
 
@@ -144,14 +154,29 @@ class PolityAgent:
             logger.warning("polity_teach_retrieval_skipped user_id=%s topic=%s reason=retrieval_failed", user_id, resolved_topic)
 
         # 3. Build Prompt (knowledge-base-aware, with optional RAG enrichment)
-        system_prompt = self._build_teaching_system_prompt(context, rag_chunks, current_topic_name=resolved_topic)
+        system_prompt = self._build_teaching_system_prompt(
+            context,
+            rag_chunks,
+            current_topic_name=resolved_topic,
+            curriculum_context=curriculum_context,
+        )
         user_message = message or f"Teach me about {resolved_topic}."
 
-        # 4. Generate Answer
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_message),
-        ]
+        # 4. Generate Answer — include conversation history for context
+        messages = [SystemMessage(content=system_prompt)]
+
+        # Inject recent conversation history so the LLM remembers what it taught
+        if conversation_history:
+            for entry in conversation_history[-10:]:  # last 10 messages
+                role = entry.get("role", "user")
+                content = entry.get("content", "")
+                if role == "assistant":
+                    from langchain_core.messages import AIMessage
+                    messages.append(AIMessage(content=content))
+                else:
+                    messages.append(HumanMessage(content=content))
+
+        messages.append(HumanMessage(content=user_message))
         
         try:
             logger.info("polity_teach_llm_start provider=gemini user_id=%s topic=%s model=%s", user_id, resolved_topic, self._model)
@@ -181,7 +206,7 @@ class PolityAgent:
                 subject_code="polity",
                 topic_slug=topic_slug,
                 observation=f"Taught topic: {resolved_topic}. User requested: {message or 'initial explanation'}",
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
         )
         logger.info(
@@ -209,13 +234,14 @@ class PolityAgent:
             ]
 
         return {
-            "answer": response.content,
+            "answer": final_answer,
             "sources": sources,
-            "topic": topic,
+            "topic": resolved_topic,
             "subject": "Polity",
             "next_actions": [
-                f"Generate MCQs on {topic}",
-                f"Explain {topic} in more detail",
+                f"Generate MCQs on {resolved_topic}",
+                f"Explain {resolved_topic} in more detail",
+                "Mark current item complete",
             ],
         }
 
@@ -362,7 +388,112 @@ class PolityAgent:
             logger.exception("polity_evaluate_mcq_llm_failed provider=gemini user_id=%s topic=%s model=%s fallback=true", user_id, topic, self._model)
             return "Good attempt. Review your weak areas and keep practicing."
 
-    def _build_teaching_system_prompt(self, context: Any, chunks: list[Any], current_topic_name: str | None = None) -> str:
+    async def _get_curriculum_context(self, user_id: UUID, topic: str) -> dict[str, Any]:
+        try:
+            nodes = await self._memory_service.get_curriculum("polity")
+        except Exception:
+            nodes = []
+        if not isinstance(nodes, list):
+            nodes = []
+
+        try:
+            position = await self._memory_service.get_current_curriculum_position(
+                user_id,
+                "polity",
+            )
+        except Exception:
+            position = (None, None)
+        if not isinstance(position, tuple) or len(position) != 2:
+            position = (None, None)
+        current_node, current_progress = position
+        node = current_node if topic.lower() in ("auto", "next", "status") else self._find_node(nodes, topic)
+        if node is None:
+            node = current_node
+
+        node_map = {item.id: item for item in nodes}
+        child_map: dict[str | None, list[CurriculumNode]] = defaultdict(list)
+        for item in nodes:
+            child_map[item.parent_id].append(item)
+        for children in child_map.values():
+            children.sort(key=lambda item: item.learning_order)
+
+        path: list[CurriculumNode] = []
+        if node:
+            cursor: CurriculumNode | None = node
+            seen: set[str] = set()
+            while cursor and cursor.id not in seen:
+                seen.add(cursor.id)
+                path.insert(0, cursor)
+                cursor = node_map.get(cursor.parent_id) if cursor.parent_id else None
+
+        prerequisite_titles = [
+            node_map[item_id].title for item_id in node.prerequisites
+            if node and item_id in node_map
+        ] if node else []
+
+        next_items: list[CurriculumNode] = []
+        if node:
+            leaf_nodes = sorted(
+                [item for item in nodes if not item.child_ids],
+                key=lambda item: item.learning_order,
+            )
+            for index, item in enumerate(leaf_nodes):
+                if item.id == node.id:
+                    next_items = leaf_nodes[index + 1 : index + 4]
+                    break
+
+        return {
+            "node": node,
+            "current_node": current_node,
+            "current_progress": current_progress,
+            "path": path,
+            "prerequisite_titles": prerequisite_titles,
+            "next_items": next_items,
+        }
+
+    def _find_node(self, nodes: list[CurriculumNode], topic: str) -> CurriculumNode | None:
+        normalized_topic = topic.strip().lower()
+        if not normalized_topic:
+            return None
+        for node in nodes:
+            if node.id.lower() == normalized_topic or node.title.lower() == normalized_topic:
+                return node
+        for node in nodes:
+            title = node.title.lower()
+            if normalized_topic in title or title in normalized_topic:
+                return node
+        return None
+
+    async def _mark_curriculum_item_started(
+        self,
+        user_id: UUID,
+        node: CurriculumNode | None,
+    ) -> None:
+        if node is None or node.child_ids:
+            return
+        try:
+            existing_progress = await self._memory_service.get_curriculum_progress(user_id, "polity")
+        except Exception:
+            existing_progress = []
+        if not isinstance(existing_progress, list):
+            existing_progress = []
+        existing = next((item for item in existing_progress if item.node_id == node.id), None)
+        if existing and existing.status != NodeStatus.NOT_STARTED:
+            return
+        await self._memory_service.upsert_curriculum_progress(
+            user_id,
+            node.id,
+            NodeStatus.IN_PROGRESS,
+            started_at=datetime.now(UTC),
+        )
+
+    def _build_teaching_system_prompt(
+        self,
+        context: Any,
+        chunks: list[Any],
+        current_topic_name: str | None = None,
+        curriculum_context: dict[str, Any] | None = None,
+    ) -> str:
         # Context summary
         progress_info = "New topic for the user."
         if context.progress:
@@ -383,6 +514,7 @@ class PolityAgent:
             rag_section = f"\n\nADDITIONAL RETRIEVED SOURCE MATERIAL:\n{sources_text}"
 
         topic_context = f"\nCURRENT SYLLABUS TOPIC: {current_topic_name}\n" if current_topic_name else ""
+        curriculum_section = self._format_curriculum_prompt_context(curriculum_context or {})
 
         return (
             "You are the Polity Expert at AI University. Your goal is to teach Indian Polity "
@@ -390,16 +522,56 @@ class PolityAgent:
             f"{self.KNOWLEDGE_BASE}\n\n"
             f"USER CONTEXT:\n- {progress_info}\n- Weak Areas: {weak_areas}\n"
             f"{topic_context}"
+            f"{curriculum_section}"
             f"{rag_section}\n\n"
             "INSTRUCTIONS & SCIENTIFIC LEARNING METHODS:\n"
             "1. Ground your answer strictly in the knowledge base sources listed above.\n"
             "2. Always cite the specific book and chapter (e.g., 'As per Laxmikanth, Chapter 3...').\n"
-            "3. Chunking: Break complex topics into small, digestible chunks. Do not output a massive wall of text.\n"
-            "4. Active Recall: At the end of your explanation, provide 2-3 quick 'Active Recall' questions to test the user's immediate understanding.\n"
-            "5. If the user has weak areas, try to clarify those points if relevant.\n"
-            "6. Use UPSC-style analysis (importance, constitutional provisions, articles, amendments, implications).\n"
-            "7. Structure your response with clear headings, bullet points, and constitutional references."
+            "3. Teach the current optimized syllabus item. If the user asks about a concept that was "
+            "mentioned in your lesson (e.g., East India Company, Battle of Plassey, British Parliament), "
+            "answer it in the context of Polity. These are NOT off-topic — they are part of the Polity syllabus.\n"
+            "4. Minimize effort and maximize UPSC throughput: explain the smallest useful concept, its exam relevance, and the exact recall hooks.\n"
+            "5. Chunking: Break complex topics into small, digestible chunks. Do not output a massive wall of text.\n"
+            "6. Active Recall: At the end of your explanation, provide 2-3 quick 'Active Recall' questions to test the user's immediate understanding.\n"
+            "7. If the user asks a doubt or follow-up, answer it directly first, then reconnect it to the current syllabus item. "
+            "NEVER say you cannot answer a question about something you just taught.\n"
+            "8. If the user says they didn't understand something, re-explain it differently using simpler language, analogies, or a different angle. "
+            "Do NOT repeat the exact same explanation.\n"
+            "9. If the user asks for more detail, go deeper into the concept. Do NOT re-teach from scratch.\n"
+            "10. If the user has weak areas, try to clarify those points if relevant.\n"
+            "11. Use UPSC-style analysis (importance, constitutional provisions, articles, amendments, implications).\n"
+            "12. Structure your response with clear headings, bullet points, and constitutional references.\n"
+            "13. You have conversation history available. Use it to avoid repeating what you already taught. "
+            "Build on previous explanations rather than starting over."
         )
+
+    def _format_curriculum_prompt_context(self, curriculum_context: dict[str, Any]) -> str:
+        node = curriculum_context.get("node")
+        if node is None:
+            return ""
+
+        path = " > ".join(item.title for item in curriculum_context.get("path", []))
+        prerequisites = curriculum_context.get("prerequisite_titles") or []
+        next_items = curriculum_context.get("next_items") or []
+        progress = curriculum_context.get("current_progress")
+
+        lines = [
+            "\nOPTIMIZED CURRICULUM CONTEXT:",
+            f"- Current node: {node.title} ({node.level})",
+        ]
+        if path:
+            lines.append(f"- Breadcrumb path: {path}")
+        if progress:
+            lines.append(f"- User's current node status: {progress.status}")
+        lines.append(
+            "- Prerequisites already expected: "
+            + (", ".join(prerequisites) if prerequisites else "None listed")
+        )
+        lines.append(
+            "- Upcoming items: "
+            + (", ".join(item.title for item in next_items) if next_items else "None listed")
+        )
+        return "\n".join(lines) + "\n"
 
 
 

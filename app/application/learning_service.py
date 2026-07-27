@@ -3,12 +3,18 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+from app.application.curriculum_service import CurriculumService
 from app.memory.contracts import MemoryService
 
 
 class LearningService:
-    def __init__(self, memory_service: MemoryService) -> None:
+    def __init__(
+        self,
+        memory_service: MemoryService,
+        curriculum_service: CurriculumService | None = None,
+    ) -> None:
         self._memory_service = memory_service
+        self._curriculum_service = curriculum_service
 
     async def get_user_dashboard(self, user_id: UUID) -> dict[str, Any]:
         """Provides a summary of user progress and due tasks."""
@@ -18,7 +24,7 @@ class LearningService:
         # 2. Get due revisions
         revisions = await self._memory_service.list_due_revisions(user_id)
         
-        # 3. Get all Polity topics (hardcoded subject for MVP)
+        # 3. Get all Polity topics
         topics = await self._memory_service.list_topics("polity")
         topic_map = {t.id: t for t in topics}
 
@@ -46,6 +52,27 @@ class LearningService:
                 "reason": r.reason,
             })
 
+        # 6. Calculate studied topics count (only topics user has actually studied)
+        studied_count = 0
+        current_position_title = None
+
+        if self._curriculum_service:
+            studied_count = await self._curriculum_service.get_studied_topics_count(
+                user_id, "polity",
+            )
+            # Get current curriculum position
+            summary = await self._curriculum_service.get_user_progress_summary(
+                user_id, "polity",
+            )
+            if summary.get("current_position"):
+                current_position_title = summary["current_position"].get("title")
+        else:
+            # Fallback: count progress entries with completion > 0
+            studied_count = sum(
+                1 for p in progress_list
+                if topic_map.get(p.topic_id) is not None and p.completion_percent > 0
+            )
+
         return {
             "user_id": user_id,
             "progress": formatted_progress,
@@ -54,7 +81,8 @@ class LearningService:
                 {
                     "code": "polity",
                     "name": "Indian Polity",
-                    "topics_count": len(topics)
+                    "topics_count": studied_count,
+                    "current_position": current_position_title,
                 }
-            ]
+            ],
         }
