@@ -155,12 +155,44 @@
   color: var(--color-text-secondary);
 }
 
-.currentPosition {
-  font-size: var(--font-size-xs, 12px) !important;
-  color: var(--color-secondary) !important;
-  margin-top: 4px;
+.positionContainer {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.positionLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
+.positionBadge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-background);
+  padding: 6px 10px;
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--color-border);
+}
+
+.positionId {
+  background: var(--color-secondary);
+  color: var(--color-primary);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.positionTitle {
+  font-size: 13px;
   font-weight: 500;
-  opacity: 0.9;
+  color: var(--color-primary);
 }
 
 .emptyCard {
