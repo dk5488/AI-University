@@ -24,7 +24,18 @@ This document explains the commands used to bring up all components of the AI Un
 - `--reload`: Enables auto-reloading. Whenever you make changes to the Python code, the backend server will automatically restart to reflect those changes.
 - **Port:** The backend typically runs on `http://127.0.0.1:8000` (or `http://localhost:8000`).
 
-## 3. Starting the Frontend UI (React / Vite)
+## 3. Starting the RAG Pipeline API
+**Command:** `..\.venv\Scripts\python -m uvicorn api:app --port 8001 --reload`
+**Directory:** `c:\Users\divyp\Documents\AI University\RAG Pipeline`
+
+**Explanation:**
+- This starts the RAG Pipeline's FastAPI server, which exposes a `/search` endpoint.
+- The main backend calls this API to retrieve relevant document chunks from the knowledge base (Qdrant Cloud / `rag_notes` collection) for teaching/explanation queries.
+- The RAG Pipeline handles embedding queries with FastEmbed (BAAI/bge-small-en-v1.5) and searching the vector store internally.
+- `--port 8001`: Runs on port 8001 to avoid conflict with the main backend on port 8000.
+- **Port:** The RAG Pipeline API runs on `http://127.0.0.1:8001`.
+
+## 4. Starting the Frontend UI (React / Vite)
 **Command:** `npm install && npm run dev`
 **Directory:** `c:\Users\divyp\Documents\AI University\web`
 

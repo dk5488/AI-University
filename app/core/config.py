@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     gemini_embedding_model: str = "gemini-embedding-2-preview"
     gemini_embedding_dimensions: int = 768
 
+    rag_pipeline_url: str = "http://localhost:8001"
+
     @field_validator("gemini_chat_model", "gemini_embedding_model", mode="before")
     @classmethod
     def normalize_gemini_model_name(cls, value: str) -> str:
