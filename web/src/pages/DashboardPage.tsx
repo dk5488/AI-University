@@ -181,9 +181,23 @@ const DashboardPage: React.FC = () => {
                   <strong>{s.name}</strong>
                   <p>{s.topics_count} Topics Studied</p>
                   {s.current_position && (
-                    <p className={styles.currentPosition}>
-                      📍 Currently on: {s.current_position}
-                    </p>
+                    <div className={styles.positionContainer}>
+                      <span className={styles.positionLabel}>Current Progress</span>
+                      <div className={styles.positionBadge}>
+                        {(() => {
+                          const match = s.current_position.match(/^Concept ([\d\.]+):\s*(.*)/);
+                          if (match) {
+                            return (
+                              <>
+                                <span className={styles.positionId}>Concept ID: {match[1]}</span>
+                                <span className={styles.positionTitle}>{match[2]}</span>
+                              </>
+                            );
+                          }
+                          return <span className={styles.positionTitle}>{s.current_position}</span>;
+                        })()}
+                      </div>
+                    </div>
                   )}
                 </div>
               </Card>
